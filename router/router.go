@@ -1,198 +1,94 @@
-// Package router 定义了 HTTP 路由注册逻辑，将 URL 路径映射到对应的 Controller 方法。
+// Package router 定义 HTTP 路由注册逻辑，将 URL 路径映射到对应的 Controller 方法。
 package router
 
 import (
 	"net/http"
 
 	"github.com/example/flowgo/controller"
-	httpSwagger "github.com/swaggo/http-swagger/v2"
+	"github.com/example/flowgo/scheduler"
+	"github.com/example/flowgo/web"
 )
 
-// NewRouter 创建并配置 HTTP 请求路由器，注册所有 API 路由及 Swagger 文档。
-func NewRouter(userController *controller.UserController, statusController *controller.StatusController) *http.ServeMux {
+// NewRouter 创建并配置 HTTP 请求路由器，注册健康检查、API、Webhook 与 Web 控制台路由。
+func NewRouter(
+	workflowController *controller.WorkflowController,
+	runController *controller.RunController,
+	webhookController *controller.WebhookController,
+	statusController *controller.StatusController,
+	sched *scheduler.Scheduler,
+) *http.ServeMux {
 	mux := http.NewServeMux()
 
+	// 健康检查，附加调度任务数量便于观测。
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		jobs := 0
+		if sched != nil {
+			jobs = sched.Entries()
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok","message":"Service is running"}`))
+		w.Write([]byte(`{"status":"ok","message":"Service is running","data":{"scheduler_jobs":` +
+			itoa(jobs) + `}}`))
 	})
 
+	// 系统状态监控。
 	mux.HandleFunc("GET /status", statusController.GetStatus)
 
-	mux.HandleFunc("POST /api/users", userController.CreateUser)
-	mux.HandleFunc("GET /api/users", userController.GetAllUsers)
-	mux.HandleFunc("GET /api/users/{id}", userController.GetUserByID)
-	mux.HandleFunc("PUT /api/users/{id}", userController.UpdateUser)
-	mux.HandleFunc("DELETE /api/users/{id}", userController.DeleteUser)
+	// 工作流 CRUD 与手动触发。
+	mux.HandleFunc("GET /api/workflows", workflowController.List)
+	mux.HandleFunc("POST /api/workflows", workflowController.Create)
+	mux.HandleFunc("GET /api/workflows/{id}", workflowController.Get)
+	mux.HandleFunc("PUT /api/workflows/{id}", workflowController.Update)
+	mux.HandleFunc("DELETE /api/workflows/{id}", workflowController.Delete)
+	mux.HandleFunc("POST /api/workflows/{id}/run", workflowController.Run)
 
-	mux.Handle("/swagger/", httpSwagger.Handler(
-		httpSwagger.URL("/swagger/doc.json"),
-	))
+	// 内置节点类型。
+	mux.HandleFunc("GET /api/node-types", workflowController.NodeTypes)
 
-	mux.HandleFunc("GET /swagger/doc.json", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(swaggerDoc))
+	// 运行记录与执行日志。
+	mux.HandleFunc("GET /api/runs", runController.List)
+	mux.HandleFunc("GET /api/runs/{id}", runController.Get)
+	mux.HandleFunc("DELETE /api/runs/{id}", runController.Delete)
+
+	// Webhook 外部触发入口，同时支持 POST（推荐）与 GET（便于浏览器与第三方回调）。
+	mux.HandleFunc("POST /hook/{key}", webhookController.Trigger)
+	mux.HandleFunc("GET /hook/{key}", webhookController.Trigger)
+
+	// Web 控制台：单页应用与静态资源。
+	index := web.Index()
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		w.Write(index)
 	})
+	mux.Handle("GET /assets/", http.StripPrefix("/assets/", web.AssetsHandler()))
 
 	return mux
 }
 
-// swaggerDoc 内嵌的 Swagger 2.0 文档定义，用于 Swagger UI 展示 API 文档。
-const swaggerDoc = `{
-  "swagger": "2.0",
-  "info": {
-    "description": "FlowGo - Go API Service",
-    "title": "FlowGo",
-    "contact": {},
-    "version": "1.0"
-  },
-  "host": "localhost:8084",
-  "basePath": "/",
-  "paths": {
-    "/api/users": {
-      "get": {
-        "description": "Get all users",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["users"],
-        "summary": "Get all users",
-        "responses": {
-          "200": {
-            "description": "Success",
-            "schema": {
-              "type": "array",
-              "items": { "$ref": "#/definitions/model.User" }
-            }
-          }
-        }
-      },
-      "post": {
-        "description": "Create a new user",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["users"],
-        "summary": "Create user",
-        "parameters": [
-          {
-            "description": "User object",
-            "name": "user",
-            "in": "body",
-            "required": true,
-            "schema": { "$ref": "#/definitions/model.CreateUserRequest" }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Created",
-            "schema": { "$ref": "#/definitions/model.User" }
-          },
-          "400": { "description": "Bad Request" }
-        }
-      }
-    },
-    "/api/users/{id}": {
-      "get": {
-        "description": "Get user by ID",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["users"],
-        "summary": "Get user",
-        "parameters": [
-          {
-            "type": "integer",
-            "description": "User ID",
-            "name": "id",
-            "in": "path",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success",
-            "schema": { "$ref": "#/definitions/model.User" }
-          },
-          "404": { "description": "Not Found" }
-        }
-      },
-      "put": {
-        "description": "Update user",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["users"],
-        "summary": "Update user",
-        "parameters": [
-          {
-            "type": "integer",
-            "description": "User ID",
-            "name": "id",
-            "in": "path",
-            "required": true
-          },
-          {
-            "description": "User object",
-            "name": "user",
-            "in": "body",
-            "required": true,
-            "schema": { "$ref": "#/definitions/model.UpdateUserRequest" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success",
-            "schema": { "$ref": "#/definitions/model.User" }
-          },
-          "404": { "description": "Not Found" }
-        }
-      },
-      "delete": {
-        "description": "Delete user",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["users"],
-        "summary": "Delete user",
-        "parameters": [
-          {
-            "type": "integer",
-            "description": "User ID",
-            "name": "id",
-            "in": "path",
-            "required": true
-          }
-        ],
-        "responses": {
-          "204": { "description": "No Content" },
-          "404": { "description": "Not Found" }
-        }
-      }
-    }
-  },
-  "definitions": {
-    "model.CreateUserRequest": {
-      "type": "object",
-      "properties": {
-        "name": { "type": "string" },
-        "age": { "type": "integer" }
-      },
-      "required": ["name", "age"]
-    },
-    "model.UpdateUserRequest": {
-      "type": "object",
-      "properties": {
-        "name": { "type": "string" },
-        "age": { "type": "integer" }
-      }
-    },
-    "model.User": {
-      "type": "object",
-      "properties": {
-        "ID": { "type": "integer" },
-        "CreatedAt": { "type": "string", "format": "date-time" },
-        "UpdatedAt": { "type": "string", "format": "date-time" },
-        "DeletedAt": { "type": "string", "format": "date-time" },
-        "name": { "type": "string" },
-        "age": { "type": "integer" }
-      }
-    }
-  }
-}`
+// itoa 将整数转为十进制字符串，避免在响应拼接处引入额外依赖。
+func itoa(v int) string {
+	if v == 0 {
+		return "0"
+	}
+	neg := v < 0
+	if neg {
+		v = -v
+	}
+	buf := [20]byte{}
+	i := len(buf)
+	for v > 0 {
+		i--
+		buf[i] = byte('0' + v%10)
+		v /= 10
+	}
+	if neg {
+		i--
+		buf[i] = '-'
+	}
+	return string(buf[i:])
+}

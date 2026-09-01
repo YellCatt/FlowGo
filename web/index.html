@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FlowGo · 工作流编排</title>
+<script src="/assets/vue.global.prod.js"></script>
+<style>
+  :root {
+    --bg: #0f1420;
+    --panel: #171d2b;
+    --panel-2: #1e2637;
+    --border: #2a3448;
+    --text: #e6ebf5;
+    --muted: #8b98b0;
+    --accent: #4f8cff;
+    --accent-soft: rgba(79, 140, 255, 0.14);
+    --success: #2ecc8f;
+    --danger: #ff5c5c;
+    --warn: #ffb020;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 "Segoe UI", -apple-system, BlinkMacSystemFont, "Microsoft YaHei", sans-serif;
+  }
+  #app { height: 100%; }
+  button, input, select, textarea {
+    font-family: inherit; font-size: 13px; color: var(--text);
+  }
+  button { cursor: pointer; }
+
+  /* ---------- 布局 ---------- */
+  .layout { display: flex; flex-direction: column; height: 100%; }
+  .topbar {
+    display: flex; align-items: center; gap: 14px;
+    padding: 0 20px; height: 56px; flex: 0 0 56px;
+    background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  .logo { font-size: 17px; font-weight: 600; letter-spacing: .5px; }
+  .logo span { color: var(--accent); }
+  .topbar .spacer { flex: 1; }
+  .badge {
+    padding: 3px 9px; border-radius: 20px; font-size: 12px;
+    background: var(--panel-2); color: var(--muted); border: 1px solid var(--border);
+  }
+  .main { flex: 1; display: flex; min-height: 0; }
+  .sidebar {
+    width: 260px; flex: 0 0 260px; background: var(--panel);
+    border-right: 1px solid var(--border); display: flex; flex-direction: column;
+  }
+  .sidebar-head {
+    padding: 12px 14px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .sidebar-head h3 { margin: 0; font-size: 13px; color: var(--muted); font-weight: 600; letter-spacing: .4px; }
+  .wf-list { overflow-y: auto; flex: 1; padding: 8px; }
+  .wf-item {
+    padding: 10px 12px; border-radius: var(--radius); margin-bottom: 6px;
+    cursor: pointer; border: 1px solid transparent; transition: .15s;
+  }
+  .wf-item:hover { background: var(--panel-2); }
+  .wf-item.active { background: var(--accent-soft); border-color: var(--accent); }
+  .wf-item .name { font-weight: 500; display: flex; align-items: center; gap: 8px; }
+  .wf-item .meta { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .content { flex: 1; overflow-y: auto; padding: 20px 24px 60px; }
+
+  /* ---------- 控件 ---------- */
+  .btn {
+    padding: 7px 14px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--panel-2); transition: .15s;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500; }
+  .btn.primary:hover { filter: brightness(1.1); }
+  .btn.danger:hover { border-color: var(--danger); color: var(--danger); }
+  .btn.small { padding: 4px 10px; font-size: 12px; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px 18px; margin-bottom: 16px;
+  }
+  .card-title {
+    font-size: 13px; font-weight: 600; color: var(--muted);
+    letter-spacing: .5px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px;
+  }
+  .card-title .spacer { flex: 1; }
+
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+  .field input[type=text], .field input[type=number], .field select, .field textarea {
+    width: 100%; padding: 8px 10px; border-radius: 8px;
+    background: var(--panel-2); border: 1px solid var(--border); outline: none;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--accent); }
+  .field textarea { resize: vertical; min-height: 72px; font-family: Consolas, Menlo, monospace; font-size: 12.5px; }
+  .row { display: flex; gap: 12px; }
+  .row > * { flex: 1; }
+  .switch { display: flex; align-items: center; gap: 8px; }
+  .switch input { width: auto; }
+
+  .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .hint code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; color: var(--accent); }
+
+  /* ---------- 节点 ---------- */
+  .node {
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 12px 14px; margin-bottom: 10px;
+  }
+  .node-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .node-idx {
+    width: 22px; height: 22px; border-radius: 50%; background: var(--accent-soft);
+    color: var(--accent); display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; flex: 0 0 22px;
+  }
+  .node-head .spacer { flex: 1; }
+  .type-tag {
+    font-size: 11px; padding: 2px 8px; border-radius: 4px;
+    background: rgba(255,255,255,.06); color: var(--muted); text-transform: uppercase; letter-spacing: .5px;
+  }
+
+  /* ---------- 运行记录 ---------- */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  tbody tr:hover { background: var(--panel-2); }
+  tbody tr.clickable { cursor: pointer; }
+  .status {
+    padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 500;
+  }
+  .status.success { background: rgba(46,204,143,.15); color: var(--success); }
+  .status.failed  { background: rgba(255,92,92,.15);  color: var(--danger); }
+  .status.running { background: rgba(255,176,32,.15); color: var(--warn); }
+  .status.pending { background: rgba(139,152,176,.15); color: var(--muted); }
+
+  .log-item { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; background: var(--panel-2); }
+  .log-head { display: flex; align-items: center; gap: 10px; }
+  .log-head .spacer { flex: 1; }
+  pre {
+    margin: 8px 0 0; padding: 10px; border-radius: 6px; background: #0b0f18;
+    border: 1px solid var(--border); overflow-x: auto;
+    font-family: Consolas, Menlo, monospace; font-size: 12px; color: #b9c6dd;
+    white-space: pre-wrap; word-break: break-all; max-height: 260px; overflow-y: auto;
+  }
+  .empty { text-align: center; padding: 40px 0; color: var(--muted); }
+  .toast {
+    position: fixed; right: 20px; bottom: 20px; padding: 10px 16px; border-radius: 8px;
+    background: var(--panel-2); border: 1px solid var(--border); z-index: 99;
+    box-shadow: 0 8px 24px rgba(0,0,0,.35);
+  }
+  .toast.error { border-color: var(--danger); color: var(--danger); }
+  .toast.success { border-color: var(--success); color: var(--success); }
+  .tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+  .tab {
+    padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border);
+    background: transparent; color: var(--muted);
+  }
+  .tab.active { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+  .kv { display: flex; gap: 20px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+  .kv b { color: var(--text); font-weight: 500; }
+  .mono { font-family: Consolas, Menlo, monospace; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="layout">
+    <header class="topbar">
+      <div class="logo">Flow<span>Go</span></div>
+      <span class="badge">纯 Go · SQLite · 无 CGO</span>
+      <div class="spacer"></div>
+      <span class="badge">定时任务 {{ schedulerJobs }}</span>
+      <span class="badge">节点 {{ nodeTypes.join(' / ') }}</span>
+      <button class="btn" @click="refreshStatus">系统状态</button>
+    </header>
+
+    <div class="main">
+      <!-- 侧边栏：工作流列表 -->
+      <aside class="sidebar">
+        <div class="sidebar-head">
+          <h3>工作流</h3>
+          <button class="btn small primary" @click="createWorkflow">+ 新建</button>
+        </div>
+        <div class="wf-list">
+          <div v-if="!workflows.length" class="empty" style="padding:24px 8px;font-size:12px;">
+            暂无工作流
+          </div>
+          <div v-for="wf in workflows" :key="wf.id"
+               class="wf-item" :class="{active: current && current.id === wf.id}"
+               @click="selectWorkflow(wf)">
+            <div class="name">
+              <span :style="{color: wf.enabled ? 'var(--success)' : 'var(--muted)'}">●</span>
+              {{ wf.name }}
+            </div>
+            <div class="meta">
+              <span v-if="wf.cron">⏱ {{ wf.cron }}</span>
+              <span v-else>未设定时</span>
+              · {{ (wf.graph && JSON.parse(wf.graph || '{}').nodes || []).length }} 节点
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- 主区域 -->
+      <section class="content">
+        <div v-if="!current" class="empty">
+          <div style="font-size:15px;margin-bottom:8px;">从左侧选择一个工作流，或新建一个</div>
+          <div style="font-size:12px;">支持 http / shell / delay 节点，可由 Webhook 或 Cron 触发</div>
+        </div>
+
+        <template v-else>
+          <!-- 基本信息 -->
+          <div class="card">
+            <div class="card-title">
+              基本信息
+              <div class="spacer"></div>
+              <button class="btn small primary" @click="save" :disabled="saving">保存</button>
+              <button class="btn small" @click="runNow" :disabled="running">▶ 运行</button>
+              <button class="btn small danger" @click="remove">删除</button>
+            </div>
+
+            <div class="row">
+              <div class="field">
+                <label>名称</label>
+                <input type="text" v-model="current.name" placeholder="例如：每日数据同步" />
+              </div>
+              <div class="field">
+                <label>描述</label>
+                <input type="text" v-model="current.description" placeholder="可选" />
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="field">
+                <label>Cron 表达式（留空表示不定时）</label>
+                <input type="text" v-model="current.cron" placeholder="0 8 * * * 或 @every 1h" />
+                <div class="hint">支持 5 段 <code>分 时 日 月 周</code> 或 6 段（首位为秒），也可用 <code>@every 30s</code> / <code>@hourly</code></div>
+              </div>
+              <div class="field">
+                <label>启用</label>
+                <div class="switch">
+                  <input type="checkbox" v-model="current.enabled" />
+                  <span class="hint" style="margin:0;">关闭后 Webhook 与定时任务都不会触发</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Webhook -->
+          <div class="card">
+            <div class="card-title">Webhook 触发</div>
+            <div class="field">
+              <label>调用地址（外部系统 POST 此地址即可触发流程）</label>
+              <div style="display:flex;gap:8px;">
+                <input type="text" class="mono" :value="webhookURL" readonly />
+                <button class="btn" @click="copy(webhookURL)">复制</button>
+                <button class="btn" @click="testWebhook">测试</button>
+              </div>
+              <div class="hint">
+                请求体 / 表单 / 查询参数会作为 <code>{{ '{{ .trigger.xxx }}' }}</code> 注入节点配置
+              </div>
+            </div>
+          </div>
+
+          <!-- 节点编排 -->
+          <div class="card">
+            <div class="card-title">
+              节点编排
+              <div class="spacer"></div>
+              <button class="btn small" @click="addNode">+ 添加节点</button>
+            </div>
+
+            <div v-if="!nodes.length" class="empty" style="padding:20px 0;">
+              还没有节点，点击右上「添加节点」开始编排
+            </div>
+
+            <div v-for="(n, i) in nodes" :key="n.id" class="node">
+              <div class="node-head">
+                <div class="node-idx">{{ i + 1 }}</div>
+                <input type="text" v-model="n.name" placeholder="节点名称"
+                       style="flex:1;background:transparent;border:none;outline:none;font-weight:500;" />
+                <select v-model="n.type" @change="onTypeChange(n)" style="width:120px;">
+                  <option v-for="t in nodeTypes" :key="t" :value="t">{{ t }}</option>
+                </select>
+                <span class="type-tag">{{ n.id }}</span>
+                <button class="btn small" @click="moveUp(i)" :disabled="i === 0">↑</button>
+                <button class="btn small" @click="moveDown(i)" :disabled="i === nodes.length - 1">↓</button>
+                <button class="btn small danger" @click="removeNode(i)">✕</button>
+              </div>
+
+              <!-- http -->
+              <template v-if="n.type === 'http'">
+                <div class="row">
+                  <div class="field">
+                    <label>方法</label>
+                    <select v-model="n.config.method">
+                      <option>GET</option><option>POST</option><option>PUT</option>
+                      <option>PATCH</option><option>DELETE</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>超时（秒）</label>
+                    <input type="number" v-model.number="n.config.timeout" />
+                  </div>
+                </div>
+                <div class="field">
+                  <label>URL</label>
+                  <input type="text" class="mono" v-model="n.config.url" placeholder="https://api.example.com/hook" />
+                </div>
+                <div class="field">
+                  <label>请求头（JSON 对象）</label>
+                  <textarea v-model="n.headersText" placeholder='{"Authorization":"Bearer xxx"}'></textarea>
+                </div>
+                <div class="field">
+                  <label>请求体</label>
+                  <textarea v-model="n.config.body" :placeholder="'{{ .trigger.order_id }}'"></textarea>
+                </div>
+              </template>
+
+              <!-- shell -->
+              <template v-else-if="n.type === 'shell'">
+                <div class="row">
+                  <div class="field">
+                    <label>超时（秒）</label>
+                    <input type="number" v-model.number="n.config.timeout" />
+                  </div>
+                  <div class="field">
+                    <label>工作目录（可选）</label>
+                    <input type="text" v-model="n.config.workdir" />
+                  </div>
+                </div>
+                <div class="field">
+                  <label>命令</label>
+                  <textarea class="mono" v-model="n.config.command" placeholder="echo hello"></textarea>
+                  <div class="hint">Windows 默认 PowerShell，Linux / macOS 默认 <code>/bin/sh -c</code>；退出码非 0 视为失败</div>
+                </div>
+              </template>
+
+              <!-- delay -->
+              <template v-else-if="n.type === 'delay'">
+                <div class="field">
+                  <label>等待秒数</label>
+                  <input type="number" v-model.number="n.config.seconds" />
+                </div>
+              </template>
+
+              <div class="field" style="margin-top:10px;margin-bottom:0;">
+                <label>依赖的上游节点（可多选，用于确定执行顺序；留空则按列表顺序执行）</label>
+                <select multiple size="3" v-model="n.dependsOn" style="height:auto;">
+                  <option v-for="o in nodes" :key="o.id" :value="o.id" :disabled="o.id === n.id">
+                    {{ o.name || o.id }} ({{ o.type }})
+                  </option>
+                </select>
+              </div>
+            </div>
+
+            <div class="hint" style="margin-top:10px;">
+              节点输出可用 <code>{{ '{{ .nodes.<节点ID>.字段 }}' }}</code> 在后续节点中引用，
+              例如 http 节点的 <code>{{ '{{ .nodes.n1.body }}' }}</code>、<code>{{ '{{ .nodes.n1.status_code }}' }}</code>
+              （省略前导点写成 <code>{{ '{{ nodes.n1.body }}' }}</code> 亦可）
+            </div>
+          </div>
+
+          <!-- 运行记录 -->
+          <div class="card">
+            <div class="card-title">
+              运行记录
+              <div class="spacer"></div>
+              <button class="btn small" @click="loadRuns" :disabled="loadingRuns">刷新</button>
+            </div>
+            <div class="tabs">
+              <button class="tab" :class="{active: runFilter === 0}" @click="setFilter(0)">全部</button>
+              <button class="tab" :class="{active: runFilter === current.id}" @click="setFilter(current.id)">当前工作流</button>
+            </div>
+
+            <table v-if="runs.length">
+              <thead>
+                <tr>
+                  <th style="width:60px;">ID</th>
+                  <th style="width:110px;">状态</th>
+                  <th style="width:90px;">触发</th>
+                  <th style="width:150px;">开始时间</th>
+                  <th style="width:90px;">耗时</th>
+                  <th>错误信息</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="r in runs" :key="r.id" class="clickable" @click="loadDetail(r)">
+                  <td class="mono">{{ r.id }}</td>
+                  <td><span class="status" :class="r.status">{{ r.status }}</span></td>
+                  <td>{{ r.trigger }}</td>
+                  <td class="mono">{{ r.started_at || r.created_at }}</td>
+                  <td>{{ r.duration_ms }} ms</td>
+                  <td :style="{color: r.error ? 'var(--danger)' : ''}">{{ r.error || '-' }}</td>
+                </tr>
+              </tbody>
+            </table>
+            <div v-else class="empty" style="padding:24px 0;">暂无运行记录</div>
+          </div>
+
+          <!-- 运行详情 -->
+          <div class="card" v-if="detail">
+            <div class="card-title">
+              运行详情 #{{ detail.id }}
+              <div class="spacer"></div>
+              <button class="btn small" @click="detail = null">收起</button>
+            </div>
+            <div class="kv" style="margin-bottom:12px;">
+              <span>状态 <b><span class="status" :class="detail.status">{{ detail.status }}</span></b></span>
+              <span>触发方式 <b>{{ detail.trigger }}</b></span>
+              <span>耗时 <b>{{ detail.duration_ms }} ms</b></span>
+              <span>开始 <b class="mono">{{ detail.started_at }}</b></span>
+            </div>
+            <div class="field" v-if="detail.payload">
+              <label>触发负载</label>
+              <pre>{{ pretty(detail.payload) }}</pre>
+            </div>
+            <div v-for="(s, i) in detail.steps" :key="s.id" class="log-item">
+              <div class="log-head">
+                <span class="node-idx">{{ i + 1 }}</span>
+                <b>{{ s.node_name }}</b>
+                <span class="type-tag">{{ s.node_type }}</span>
+                <div class="spacer"></div>
+                <span class="status" :class="s.status">{{ s.status }}</span>
+                <span class="hint" style="margin:0;">{{ s.duration_ms }} ms</span>
+              </div>
+              <pre v-if="s.input">输入：{{ pretty(s.input) }}</pre>
+              <pre v-if="s.output">输出：{{ pretty(s.output) }}</pre>
+              <pre v-if="s.error" :style="{color:'var(--danger)'}">错误：{{ s.error }}</pre>
+            </div>
+          </div>
+        </template>
+      </section>
+    </div>
+  </div>
+
+  <div v-if="toast" class="toast" :class="toast.type">{{ toast.msg }}</div>
+</div>
+
+<script>
+const { createApp, ref, reactive, computed, onMounted } = Vue;
+
+createApp({
+  setup() {
+    const workflows = ref([]);
+    const current = ref(null);
+    const nodes = ref([]);
+    const runs = ref([]);
+    const detail = ref(null);
+    const nodeTypes = ref(['http', 'shell', 'delay']);
+    const schedulerJobs = ref(0);
+    const runFilter = ref(0);
+    const toast = ref(null);
+    const saving = ref(false);
+    const running = ref(false);
+    const loadingRuns = ref(false);
+
+    let nodeSeq = 0;
+
+    const api = async (url, options) => {
+      const res = await fetch(url, Object.assign({
+        headers: { 'Content-Type': 'application/json' }
+      }, options));
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : null;
+      if (!res.ok) throw new Error((data && data.error) || '请求失败：' + res.status);
+      return data;
+    };
+
+    const showToast = (msg, type) => {
+      toast.value = { msg, type: type || 'success' };
+      setTimeout(() => { toast.value = null; }, 2600);
+    };
+
+    const webhookURL = computed(() => {
+      if (!current.value) return '';
+      return location.origin + '/hook/' + current.value.webhook_key;
+    });
+
+    // ---------- 工作流 ----------
+    const loadWorkflows = async () => {
+      workflows.value = await api('/api/workflows') || [];
+    };
+
+    const selectWorkflow = async (wf) => {
+      const full = await api('/api/workflows/' + wf.id);
+      current.value = full;
+      detail.value = null;
+      runFilter.value = full.id;
+      parseGraph();
+      loadRuns();
+    };
+
+    const createWorkflow = () => {
+      current.value = {
+        id: 0, name: '新工作流', description: '', enabled: true,
+        cron: '', webhook_key: '', graph: ''
+      };
+      nodes.value = [];
+      detail.value = null;
+      runFilter.value = 0;
+      runs.value = [];
+    };
+
+    const save = async () => {
+      saving.value = true;
+      try {
+        buildGraph();
+        const isNew = !current.value.id;
+        const body = JSON.stringify({
+          name: current.value.name,
+          description: current.value.description,
+          enabled: current.value.enabled,
+          cron: current.value.cron,
+          webhook_key: current.value.webhook_key,
+          graph: current.value.graph
+        });
+        const saved = isNew
+          ? await api('/api/workflows', { method: 'POST', body })
+          : await api('/api/workflows/' + current.value.id, { method: 'PUT', body });
+        showToast('保存成功');
+        await loadWorkflows();
+        await selectWorkflow(saved);
+      } catch (e) {
+        showToast(e.message, 'error');
+      } finally {
+        saving.value = false;
+      }
+    };
+
+    const remove = async () => {
+      if (!current.value.id) { createWorkflow(); return; }
+      if (!confirm('确认删除工作流「' + current.value.name + '」？')) return;
+      try {
+        await api('/api/workflows/' + current.value.id, { method: 'DELETE' });
+        current.value = null;
+        await loadWorkflows();
+        showToast('已删除');
+      } catch (e) { showToast(e.message, 'error'); }
+    };
+
+    // ---------- 图编辑 ----------
+    const defaultsFor = (type) => {
+      if (type === 'http') return { method: 'GET', url: '', headers: {}, body: '', timeout: 30 };
+      if (type === 'shell') return { command: '', workdir: '', timeout: 60 };
+      return { seconds: 1 };
+    };
+
+    const addNode = () => {
+      nodeSeq++;
+      const id = 'n' + nodeSeq;
+      nodes.value.push({
+        id, type: 'http', name: '节点 ' + nodeSeq,
+        dependsOn: [], headersText: '', config: defaultsFor('http')
+      });
+    };
+
+    const onTypeChange = (n) => { n.config = defaultsFor(n.type); };
+    const removeNode = (i) => {
+      const removed = nodes.value[i].id;
+      nodes.value.splice(i, 1);
+      nodes.value.forEach(n => {
+        n.dependsOn = n.dependsOn.filter(d => d !== removed);
+      });
+    };
+    const moveUp = (i) => { if (i > 0) nodes.value.splice(i - 1, 0, nodes.value.splice(i, 1)[0]); };
+    const moveDown = (i) => { if (i < nodes.value.length - 1) nodes.value.splice(i + 1, 0, nodes.value.splice(i, 1)[0]); };
+
+    const parseGraph = () => {
+      let graph = { nodes: [], edges: [] };
+      try { graph = JSON.parse(current.value.graph || '{}'); } catch (e) { /* 空图 */ }
+      const src = graph.nodes || [];
+      const edges = graph.edges || [];
+      nodeSeq = src.length;
+
+      nodes.value = src.map((n) => {
+        const deps = edges.filter(e => e.target === n.id).map(e => e.source);
+        const headers = (n.config && n.config.headers) || {};
+        return {
+          id: n.id,
+          type: n.type,
+          name: n.name || n.type,
+          dependsOn: deps,
+          headersText: Object.keys(headers).length ? JSON.stringify(headers, null, 2) : '',
+          config: Object.assign(defaultsFor(n.type), n.config || {})
+        };
+      });
+    };
+
+    const buildGraph = () => {
+      const ns = nodes.value.map(n => {
+        const cfg = Object.assign({}, n.config);
+        if (n.type === 'http') {
+          let headers = {};
+          if (n.headersText && n.headersText.trim()) {
+            try { headers = JSON.parse(n.headersText); } catch (e) {
+              throw new Error('节点「' + (n.name || n.id) + '」的请求头不是合法 JSON');
+            }
+          }
+          cfg.headers = headers;
+        }
+        return { id: n.id, type: n.type, name: n.name || n.type, config: cfg };
+      });
+
+      const edges = [];
+      nodes.value.forEach(n => {
+        (n.dependsOn || []).forEach(src => {
+          edges.push({ source: src, target: n.id });
+        });
+      });
+
+      current.value.graph = JSON.stringify({ nodes: ns, edges });
+    };
+
+    // ---------- 运行 ----------
+    const runNow = async () => {
+      if (!current.value.id) { showToast('请先保存工作流', 'error'); return; }
+      running.value = true;
+      try {
+        const run = await api('/api/workflows/' + current.value.id + '/run', {
+          method: 'POST', body: JSON.stringify({ source: 'web-ui' })
+        });
+        showToast('已触发运行 #' + run.id);
+        runFilter.value = current.value.id;
+        await loadRuns();
+        await loadDetail(run);
+      } catch (e) {
+        showToast(e.message, 'error');
+      } finally { running.value = false; }
+    };
+
+    const testWebhook = async () => {
+      if (!current.value.id) { showToast('请先保存工作流', 'error'); return; }
+      try {
+        const res = await fetch('/hook/' + current.value.webhook_key, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source: 'webhook-test', at: new Date().toISOString() })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '触发失败');
+        showToast('Webhook 已触发，运行 #' + data.run_id);
+        runFilter.value = current.value.id;
+        await loadRuns();
+        await loadDetail({ id: data.run_id });
+      } catch (e) { showToast(e.message, 'error'); }
+    };
+
+    const setFilter = (id) => { runFilter.value = id; loadRuns(); };
+
+    const loadRuns = async () => {
+      loadingRuns.value = true;
+      try {
+        const id = runFilter.value || current.value.id;
+        runs.value = await api('/api/runs?workflow_id=' + (id || '') + '&limit=30') || [];
+      } catch (e) { showToast(e.message, 'error'); }
+      finally { loadingRuns.value = false; }
+    };
+
+    const loadDetail = async (run) => {
+      detail.value = await api('/api/runs/' + run.id);
+    };
+
+    const refreshStatus = async () => {
+      try {
+        const s = await api('/status');
+        showToast('CPU ' + s.cpu.usage.toFixed(1) + '% · 内存 ' + s.memory.usage.toFixed(1) + '% · 运行 ' + s.uptime + 's');
+      } catch (e) { showToast(e.message, 'error'); }
+    };
+
+    const loadMeta = async () => {
+      try {
+        nodeTypes.value = await api('/api/node-types');
+        const health = await api('/health');
+        schedulerJobs.value = (health.data && health.data.scheduler_jobs) || 0;
+      } catch (e) { /* 元数据加载失败不影响主流程 */ }
+    };
+
+    const copy = (text) => {
+      navigator.clipboard.writeText(text).then(
+        () => showToast('已复制到剪贴板'),
+        () => showToast('复制失败，请手动复制', 'error')
+      );
+    };
+
+    const pretty = (raw) => {
+      if (!raw) return '';
+      try { return JSON.stringify(JSON.parse(raw), null, 2); }
+      catch (e) { return raw; }
+    };
+
+    onMounted(async () => {
+      await loadMeta();
+      await loadWorkflows();
+      if (workflows.value.length) await selectWorkflow(workflows.value[0]);
+    });
+
+    return {
+      workflows, current, nodes, runs, detail, nodeTypes, schedulerJobs, runFilter,
+      toast, saving, running, loadingRuns, webhookURL,
+      selectWorkflow, createWorkflow, save, remove, runNow, testWebhook,
+      addNode, onTypeChange, removeNode, moveUp, moveDown,
+      loadRuns, loadDetail, setFilter, refreshStatus, copy, pretty
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

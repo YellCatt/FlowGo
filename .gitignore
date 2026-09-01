@@ -1,0 +1,14 @@
+# 构建产物
+flowgo
+flowgo.exe
+flowgo_*
+
+# 运行时数据
+data.db
+data.db-wal
+data.db-shm
+logs/
+
+# 临时文件
+tmp_*
+*.log
