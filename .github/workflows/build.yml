@@ -7,23 +7,35 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        target:
+        include:
           - os: linux
             arch: amd64
+            runner: ubuntu-latest
+            cc: gcc
           - os: linux
             arch: arm64
+            runner: ubuntu-latest
+            cc: aarch64-linux-gnu-gcc
           - os: linux
             arch: mipsle
+            runner: ubuntu-latest
+            cc: mipsel-linux-gnu-gcc
             goflags: GOMIPS=softfloat
           - os: darwin
             arch: amd64
+            runner: macos-latest
           - os: darwin
             arch: arm64
+            runner: macos-latest
           - os: windows
             arch: amd64
+            runner: ubuntu-latest
+            cc: x86_64-w64-mingw32-gcc
+
+    runs-on: ${{ matrix.runner }}
 
     steps:
     - uses: actions/checkout@v4
@@ -32,6 +44,12 @@ jobs:
       uses: actions/setup-go@v5
       with:
         go-version: '1.22'
+
+    - name: Install cross C toolchain (ubuntu)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc gcc-aarch64-linux-gnu gcc-mingw-w64-x86-64 gcc-mipsel-linux-gnu
 
     - name: Generate build info
       run: |
@@ -45,28 +63,29 @@ jobs:
     - name: Download dependencies
       run: go mod tidy
 
-    - name: Build for ${{ matrix.target.os }}/${{ matrix.target.arch }}
+    - name: Build for ${{ matrix.os }}/${{ matrix.arch }}
       env:
-        CGO_ENABLED: 0
-        GOOS: ${{ matrix.target.os }}
-        GOARCH: ${{ matrix.target.arch }}
+        CGO_ENABLED: 1
+        GOOS: ${{ matrix.os }}
+        GOARCH: ${{ matrix.arch }}
+        CC: ${{ matrix.cc }}
       run: |
-        OUTPUT_FILE="flowgo_${{ matrix.target.os }}_${{ matrix.target.arch }}${{ matrix.target.os == 'windows' && '.exe' || '' }}"
+        OUTPUT_FILE="flowgo_${{ matrix.os }}_${{ matrix.arch }}${{ matrix.os == 'windows' && '.exe' || '' }}"
         LDFLAGS="-s -w -X main.version=${{ env.BUILD_VERSION }} -X main.commit=${{ env.BUILD_COMMIT }} -X main.buildTime=${{ env.BUILD_TIME }}"
-        ${{ matrix.target.goflags }} go build -trimpath -ldflags="$LDFLAGS" -o "$OUTPUT_FILE"
+        ${{ matrix.goflags }} go build -trimpath -ldflags="$LDFLAGS" -o "$OUTPUT_FILE"
         ls -la flowgo_*
 
     - name: Package release
       run: |
         mkdir -p release
         mv flowgo_* release/
-        tar -czf flowgo_${{ matrix.target.os }}_${{ matrix.target.arch }}.tar.gz release/
+        tar -czf flowgo_${{ matrix.os }}_${{ matrix.arch }}.tar.gz release/
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: flowgo_${{ matrix.target.os }}_${{ matrix.target.arch }}
-        path: flowgo_${{ matrix.target.os }}_${{ matrix.target.arch }}.tar.gz
+        name: flowgo_${{ matrix.os }}_${{ matrix.arch }}
+        path: flowgo_${{ matrix.os }}_${{ matrix.arch }}.tar.gz
 
   release:
     needs: build
@@ -97,6 +116,6 @@ jobs:
 
           gh release create "$VERSION" \
             --title "Development Build (Latest)" \
-            --notes "**构建版本:** dev-${{ github.run_number }}%0A**Commit:** ${{ github.sha }}%0A**构建时间:** $(date -u +%Y-%m-%dT%H:%M:%SZ)%0A%0A**构建方式:** 纯 Go，CGO_ENABLED=0，单文件分发%0A%0A**平台:** Linux amd64/arm64/mipsle、macOS amd64/arm64、Windows amd64%0A%0A**使用说明:** 解压后运行对应平台的可执行文件，浏览器打开 http://localhost:9001" \
+            --notes "**构建版本:** dev-${{ github.run_number }}%0A**Commit:** ${{ github.sha }}%0A**构建时间:** $(date -u +%Y-%m-%dT%H:%M:%SZ)%0A%0A**数据库驱动:** github.com/mattn/go-sqlite3 (CGO)%0A%0A**平台:** Linux amd64/arm64/mipsle、macOS amd64/arm64、Windows amd64%0A%0A**使用说明:** 解压后运行对应平台的可执行文件，浏览器打开 http://localhost:9001" \
             --prerelease \
             artifacts/*
