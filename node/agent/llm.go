@@ -87,7 +87,7 @@ type llmClient struct {
 }
 
 // newLLMClient 创建大模型客户端，timeout 为单次请求超时。
-func newLLMClient(baseURL, apiKey, model string, timeout time.Duration) *llmClient {
+func NewLLMClient(baseURL, apiKey, model string, timeout time.Duration) *llmClient {
 	if timeout <= 0 {
 		timeout = 60 * time.Second
 	}

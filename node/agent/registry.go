@@ -20,9 +20,9 @@ const (
 
 // 工具参数的安全上限，避免 AI 拼出超长调用把节点拖死。
 const (
-	maxToolHTTPTimeout  = 60
-	maxToolShellTimeout = 120
-	maxToolDelaySeconds = 60
+	MaxToolHTTPTimeout  = 60
+	MaxToolShellTimeout = 120
+	MaxToolDelaySeconds = 60
 )
 
 // InnerTool 是 ai_agent 节点内部可调用的工具实现。
