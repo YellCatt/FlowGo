@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/example/flowgo/engine"
+	"github.com/example/flowgo/agent"
 	"github.com/example/flowgo/model"
 	"github.com/example/flowgo/node"
 	"github.com/example/flowgo/repository"
@@ -129,7 +130,7 @@ func (s *workflowService) TriggerByWebhook(ctx context.Context, key, payload str
 func (s *workflowService) NodeTypes() []string { return node.Types() }
 
 // AgentTools 返回 ai_agent 节点内部可调用的工具名称列表。
-func (s *workflowService) AgentTools() []string { return node.ToolNames() }
+func (s *workflowService) AgentTools() []string { return agent.ToolNames() }
 
 // validate 校验工作流名称与图结构的合法性。
 func (s *workflowService) validate(wf *model.Workflow) error {

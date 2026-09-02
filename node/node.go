@@ -1,5 +1,6 @@
-// Package node 定义内置节点执行器：http、shell、delay、ai_agent，
-// 并提供 ai_agent 节点内部可用的工具注册表。
+// Package node 定义内置节点执行器：http、shell、delay、ai_agent。
+// ai_agent 所需的工具框架（LLM 客户端、工具注册表、循环逻辑）位于子包 node/agent，
+// 本包仅在 node/tools.go 中把具体节点桥接为 agent 工具并注册。
 package node
 
 import (

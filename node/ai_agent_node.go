@@ -10,6 +10,7 @@ import (
 
 	"github.com/example/flowgo/config"
 	"github.com/example/flowgo/logger"
+	"github.com/example/flowgo/node/agent"
 
 	"go.uber.org/zap"
 )
@@ -44,7 +45,7 @@ func (e *AIAgentExecutor) MaskedFields() []string { return []string{"api_key", "
 
 // Run 执行 ai_agent 节点，返回可供下游引用的输出变量。
 // 流程：① 解析并校验节点参数（模型、密钥、迭代上限等，节点配置优先于全局配置）；
-//       ② 构造 agentLoop 循环调用大模型并按需调用工具；
+//       ② 构造 AgentLoop 循环调用大模型并按需调用工具；
 //       ③ 将模型结论与统计信息组装为输出交给下游节点。
 func (e *AIAgentExecutor) Run(ctx context.Context, cfg map[string]any, ec *Context) (map[string]any, error) {
 	// 逐级兜底获取大模型连接参数：节点配置 → 全局配置 → 内置默认值。
@@ -70,7 +71,7 @@ func (e *AIAgentExecutor) Run(ctx context.Context, cfg map[string]any, ec *Conte
 	maxTokens := intOr(cfg, "max_tokens", 0)
 	maxToolOut := intOr(cfg, "max_tool_output", defaultAgentToolOutput)
 
-	registry := DefaultToolRegistry().Filter(strList(cfg, "tools"))
+	registry := agent.DefaultToolRegistry().Filter(strList(cfg, "tools"))
 	if len(registry.Names()) == 0 {
 		logger.Error("ai_agent 节点未配置可用工具，节点执行失败",
 			zap.String("node", nodeIDOf(ec)),
@@ -87,16 +88,16 @@ func (e *AIAgentExecutor) Run(ctx context.Context, cfg map[string]any, ec *Conte
 		zap.Bool("原生工具调用", boolOr(cfg, "native_tools", false)),
 	)
 
-	loop := &agentLoop{
-		client:      newLLMClient(baseURL, apiKey, model, time.Duration(timeoutSec)*time.Second),
-		tools:       registry,
-		model:       model,
-		maxIter:     maxIter,
-		temperature: temperature,
-		maxTokens:   maxTokens,
-		nativeTools: boolOr(cfg, "native_tools", false),
-		maxToolOut:  maxToolOut,
-		logFields: []zap.Field{
+	loop := &agent.AgentLoop{
+		Client:      agent.NewLLMClient(baseURL, apiKey, model, time.Duration(timeoutSec)*time.Second),
+		Tools:       registry,
+		Model:       model,
+		MaxIter:     maxIter,
+		Temperature: temperature,
+		MaxTokens:   maxTokens,
+		NativeTools: boolOr(cfg, "native_tools", false),
+		MaxToolOut:  maxToolOut,
+		LogFields: []zap.Field{
 			zap.String("node", nodeIDOf(ec)),
 			zap.String("model", model),
 		},
@@ -111,7 +112,7 @@ func (e *AIAgentExecutor) Run(ctx context.Context, cfg map[string]any, ec *Conte
 		zap.String("node", nodeIDOf(ec)),
 		zap.String("模型", model),
 	)
-	res, err := loop.run(ctx, systemPrompt, userPrompt)
+	res, err := loop.Run(ctx, systemPrompt, userPrompt)
 	elapsed := time.Since(start).Milliseconds()
 	if err != nil {
 		logger.Error("ai_agent 节点执行出错",
@@ -153,7 +154,7 @@ func ValidateAgentTools(cfg map[string]any) error {
 		return nil
 	}
 	known := map[string]bool{}
-	for _, n := range ToolNames() {
+	for _, n := range agent.ToolNames() {
 		known[n] = true
 	}
 	unknown := make([]string, 0, len(names))
@@ -163,13 +164,13 @@ func ValidateAgentTools(cfg map[string]any) error {
 		}
 	}
 	if len(unknown) > 0 {
-		return fmt.Errorf("unknown agent tools %v, available tools: %v", unknown, ToolNames())
+		return fmt.Errorf("unknown agent tools %v, available tools: %v", unknown, agent.ToolNames())
 	}
 	return nil
 }
 
 // buildAgentSystemPrompt 生成系统提示词：工具清单 + 调用协议 + 人的任务指令。
-func buildAgentSystemPrompt(registry *ToolRegistry, instruction string, maxIter int) string {
+func buildAgentSystemPrompt(registry *agent.ToolRegistry, instruction string, maxIter int) string {
 	if strings.TrimSpace(instruction) == "" {
 		instruction = defaultAgentInstruction
 	}
