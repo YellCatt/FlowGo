@@ -1,6 +1,35 @@
 # FlowGo
 
+[![Go Version](https://img.shields.io/badge/Go-1.22%2B-blue)](https://go.dev)
+[![Build Status](https://github.com/example/flowgo/actions/workflows/build.yml/badge.svg)](https://github.com/example/flowgo/actions/workflows/build.yml)
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS%20%7C%20OpenWrt-lightgrey)](#交叉编译示例)
+
 轻量工作流编排引擎：**Web 页面配置 → 调度 → 执行 → 日志** 完整闭环，单个二进制即可运行。
+
+## 工作原理
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────────┐     ┌──────────────┐
+│   Cron 调度  │     │  Webhook    │     │  手动触发        │     │  API 调用     │
+└──────┬──────┘     └──────┬──────┘     └────────┬────────┘     └──────┬───────┘
+       │                    │                     │                      │
+       └───────────┬────────┴───────────┬────────┘                      │
+                   ▼                    ▼                               ▼
+            ┌────────────────────────────────────────────────┐
+            │              执行引擎 (Engine)                 │
+            │  ┌─────────────────────────────────────────┐   │
+            │  │  拓扑排序 → 模板渲染 → 节点执行 → 日志    │   │
+            │  └─────────────────────────────────────────┘   │
+            └────────────────────────────────────────────────┘
+                             │
+             ┌───────────────┼───────────────┐
+             ▼               ▼               ▼
+        ┌──────────┐   ┌──────────┐   ┌──────────────┐
+        │   HTTP   │   │  Shell   │   │  ai_agent    │
+        │  节点    │   │  节点    │   │  节点 (LLM)  │
+        └──────────┘   └──────────┘   └──────────────┘
+```
 
 ## 功能特性
 
@@ -13,6 +42,8 @@
 - **执行日志**：每次运行记录每个节点的输入、输出、耗时与错误
 - **纯 Go 实现**：SQLite 使用 `modernc.org/sqlite` 驱动，`CGO_ENABLED=0` 可编译，单文件分发
 - **跨平台**：Linux / Windows / macOS / OpenWrt(mipsle) 均可交叉编译
+- **系统状态监控**：内置 CPU、内存、磁盘 IO、网络实时监控接口
+- **优雅退出**：收到 SIGINT/SIGTERM 信号后等待在途请求完成再退出
 
 ## 快速开始
 
@@ -26,6 +57,7 @@ CGO_ENABLED=0 go build -o flowgo
 CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -o flowgo-linux-amd64
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o flowgo.exe
 CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -o flowgo-macos-arm64
+CGO_ENABLED=0 GOOS=linux   GOARCH=mipsle GOMIPS=softfloat go build -o flowgo-openwrt-mipsle
 ```
 
 ### 运行
@@ -35,6 +67,16 @@ CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -o flowgo-macos-arm64
 ```
 
 浏览器打开 http://localhost:8084 即可进入控制台。首次运行会自动生成 `config/config.yaml` 与 SQLite 数据库。
+
+### 一键构建与发布
+
+推送到 `main` 分支时，GitHub Actions 会自动构建 6 个平台的二进制文件，并上传至 **Dev Release**（固定 tag: `dev-latest`）：
+
+| 目标平台 | 架构 | 文件名 |
+|---------|------|--------|
+| Linux | amd64 / arm64 / mipsle | `flowgo_linux_*.tar.gz` |
+| macOS | amd64 / arm64 | `flowgo_darwin_*.tar.gz` |
+| Windows | amd64 | `flowgo_windows_amd64.tar.gz` |
 
 ## 使用说明
 
@@ -226,22 +268,44 @@ llm:
 | llm.model | 默认模型名 | gpt-4o-mini |
 | llm.timeout | 大模型请求超时（秒） | 60 |
 
-## 项目结构
+## 目录结构
 
 ```
-flowgo/
-├── config/          # 配置加载与数据库初始化
-├── controller/      # HTTP 请求处理器
-├── engine/          # 执行引擎：拓扑排序、模板渲染、日志落库
-├── logger/          # Zap 日志组件
-├── model/           # 数据模型与图结构
-├── node/            # 内置节点执行器（http / shell / delay / ai_agent）与内部工具注册表
-├── repository/      # 数据访问层
-├── router/          # 路由注册
-├── scheduler/       # Cron 定时调度
-├── service/         # 业务逻辑层
-├── web/             # 内嵌的 Vue 单页控制台
-└── main.go          # 入口文件
+FlowGo/
+├── .github/workflows/build.yml   # CI: 自动构建并发布到 Dev Release
+├── config/                       # 配置加载与数据库初始化
+│   ├── config.go
+│   ├── config.yaml               # 运行时配置（首次启动自动生成）
+│   └── database.go
+├── controller/                   # HTTP 请求处理器
+│   ├── workflow_controller.go
+│   ├── run_controller.go
+│   ├── webhook_controller.go
+│   └── status_controller.go
+├── engine/                       # 执行引擎：拓扑排序、模板渲染、日志落库
+│   ├── engine.go
+│   └── template.go
+├── node/                         # 内置节点执行器与工具注册表
+│   ├── node.go                   # 节点接口定义与注册中心
+│   ├── http_node.go
+│   ├── shell_node.go
+│   ├── delay_node.go
+│   ├── ai_agent_node.go
+│   ├── agent_loop.go             # AI 多轮对话循环
+│   ├── llm_client.go             # OpenAI 兼容 API 客户端
+│   └── tool_registry.go          # ai_agent 内部可调用工具注册表
+├── repository/                   # 数据访问层（GORM + SQLite）
+├── service/                      # 业务逻辑层
+├── scheduler/                    # Cron 定时调度（robfig/cron/v3）
+├── router/                       # 路由注册（Go 1.22 ServeMux）
+├── logger/                       # Zap 日志组件
+├── model/                        # 数据模型
+├── web/                          # 内嵌的 Vue 3 单页控制台
+│   ├── index.html
+│   ├── assets/vue.global.prod.js
+│   └── web.go                    # 嵌入资源入口
+├── main.go                       # 程序入口
+└── go.mod
 ```
 
 扩展新节点类型只需实现 `node.Executor` 接口并调用 `node.Register`，
@@ -249,13 +313,17 @@ flowgo/
 
 ## 技术栈
 
-- **语言**: Go 1.22+
-- **数据库**: SQLite（modernc.org/sqlite，纯 Go 无 CGO）
-- **ORM**: GORM（glebarez/sqlite 驱动）
-- **调度**: robfig/cron
-- **日志**: Zap
-- **前端**: Vue 3（运行时内嵌，无构建步骤）
-- **系统监控**: gopsutil
+| 类别 | 技术 | 说明 |
+|------|------|------|
+| 语言 | Go 1.22+ | 利用新泛型与 net/http 新路由语法 |
+| 数据库 | SQLite (modernc.org/sqlite) | 纯 Go 实现，零 CGO |
+| ORM | GORM + glebarez/sqlite 驱动 | SQLite 专用驱动 |
+| 调度 | robfig/cron/v3 | 支持 5/6 段 cron 与 `@every` 描述符 |
+| 日志 | Uber Zap | 高性能结构化日志 |
+| 系统监控 | shirou/gopsutil/v3 | CPU / 内存 / 网络 / 磁盘 IO |
+| HTTP 框架 | 标准库 net/http | Go 1.22 ServeMux，零第三方依赖 |
+| 前端 | Vue 3 (runtime global build) | 无构建步骤，JS 直接嵌入二进制 |
+| AI 客户端 | 自研 HTTP 客户端 | OpenAI 兼容协议，支持 function calling |
 
 ## 许可证
 
