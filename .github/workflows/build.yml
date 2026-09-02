@@ -87,6 +87,6 @@ jobs:
 
           gh release create "$VERSION" \
             --title "Development Build (Latest)" \
-            --notes "Automatic build from commit ${{ github.sha }}%0A%0A**构建方式:** 纯 Go，CGO_ENABLED=0，单文件分发%0A%0A**平台:** Linux amd64/arm64/mipsle、macOS amd64/arm64、Windows amd64%0A%0A**使用说明:** 解压后运行对应平台的可执行文件，浏览器打开 http://localhost:8084" \
+            --notes "Automatic build from commit ${{ github.sha }}%0A%0A**构建方式:** 纯 Go，CGO_ENABLED=0，单文件分发%0A%0A**平台:** Linux amd64/arm64/mipsle、macOS amd64/arm64、Windows amd64%0A%0A**使用说明:** 解压后运行对应平台的可执行文件，浏览器打开 http://localhost:9001" \
             --prerelease \
             artifacts/*

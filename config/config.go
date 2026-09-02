@@ -71,7 +71,7 @@ func LoadConfig() {
 func createDefaultConfig(path string) error {
 	defaultCfg := Config{
 		Server: ServerConfig{
-			Port: 8084,
+			Port: 9001,
 		},
 		Database: DatabaseConfig{
 			Path: "./data.db",

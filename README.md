@@ -66,7 +66,7 @@ CGO_ENABLED=0 GOOS=linux   GOARCH=mipsle GOMIPS=softfloat go build -o flowgo-ope
 ./flowgo
 ```
 
-浏览器打开 http://localhost:8084 即可进入控制台。首次运行会自动生成 `config/config.yaml` 与 SQLite 数据库。
+浏览器打开 http://localhost:9001 即可进入控制台。首次运行会自动生成 `config/config.yaml` 与 SQLite 数据库。
 
 ### 一键构建与发布
 
@@ -126,11 +126,11 @@ CGO_ENABLED=0 GOOS=linux   GOARCH=mipsle GOMIPS=softfloat go build -o flowgo-ope
 每个工作流自动生成唯一的 Webhook 密钥，调用地址形如：
 
 ```
-http://localhost:8084/hook/<webhook_key>
+http://localhost:9001/hook/<webhook_key>
 ```
 
 ```bash
-curl -X POST http://localhost:8084/hook/<webhook_key> \
+curl -X POST http://localhost:9001/hook/<webhook_key> \
   -H "Content-Type: application/json" \
   -d '{"order_id": 1024, "user": "alice"}'
 ```
@@ -240,7 +240,7 @@ curl -X POST http://localhost:8084/hook/<webhook_key> \
 
 ```yaml
 server:
-  port: 8084
+  port: 9001
 
 database:
   path: ./data.db
@@ -259,7 +259,7 @@ llm:
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
-| server.port | 服务端口 | 8084 |
+| server.port | 服务端口 | 9001 |
 | database.path | SQLite 数据库路径 | ./data.db |
 | log.path | 日志目录 | ./logs |
 | log.level | 日志级别（debug/info/warn/error） | info |
