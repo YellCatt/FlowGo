@@ -71,7 +71,6 @@ func NewRouter(
 		w.WriteHeader(http.StatusOK)
 		w.Write(index)
 	})
-	mux.Handle("GET /assets/", http.StripPrefix("/assets/", web.AssetsHandler()))
 
 	// 在外层挂载请求日志中间件，统一记录所有路由的访问信息。
 	outer := http.NewServeMux()

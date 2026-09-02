@@ -4,7 +4,6 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>FlowGo · 工作流编排</title>
-<script src="/assets/vue.global.prod.js"></script>
 <style>
   :root {
     --bg: #0f1420;
@@ -173,697 +172,873 @@
       <div class="logo">Flow<span>Go</span></div>
       <span class="badge">纯 Go · SQLite · 无 CGO</span>
       <div class="spacer"></div>
-      <span class="badge">定时任务 {{ schedulerJobs }}</span>
-      <span class="badge">节点 {{ nodeTypes.join(' / ') }}</span>
-      <button class="btn" @click="refreshStatus">系统状态</button>
+      <span class="badge">定时任务 <span id="jobCount">0</span></span>
+      <span class="badge">节点 <span id="typeList"></span></span>
+      <button class="btn" data-act="refreshStatus">系统状态</button>
     </header>
 
     <div class="main">
-      <!-- 侧边栏：工作流列表 -->
       <aside class="sidebar">
         <div class="sidebar-head">
           <h3>工作流</h3>
-          <button class="btn small primary" @click="createWorkflow">+ 新建</button>
+          <button class="btn small primary" data-act="createWorkflow">+ 新建</button>
         </div>
-        <div class="wf-list">
-          <div v-if="!workflows.length" class="empty" style="padding:24px 8px;font-size:12px;">
-            暂无工作流
-          </div>
-          <div v-for="wf in workflows" :key="wf.id"
-               class="wf-item" :class="{active: current && current.id === wf.id}"
-               @click="selectWorkflow(wf)">
-            <div class="name">
-              <span :style="{color: wf.enabled ? 'var(--success)' : 'var(--muted)'}">●</span>
-              {{ wf.name }}
-            </div>
-            <div class="meta">
-              <span v-if="wf.cron">⏱ {{ wf.cron }}</span>
-              <span v-else>未设定时</span>
-              <span v-if="wf.group" class="grp">组:{{ wf.group }}</span>
-              · {{ (wf.graph && JSON.parse(wf.graph || '{}').nodes || []).length }} 节点
-            </div>
-          </div>
-        </div>
+        <div class="wf-list" id="wfList"></div>
       </aside>
 
-      <!-- 主区域 -->
-      <section class="content">
-        <div v-if="!current" class="empty">
-          <div style="font-size:15px;margin-bottom:8px;">从左侧选择一个工作流，或新建一个</div>
-          <div style="font-size:12px;">支持 http / shell / delay 节点，可插入 ai_agent 节点让大模型在节点内分析并调用工具，可由 Webhook 或 Cron 触发</div>
-        </div>
-
-        <template v-else>
-          <!-- 基本信息 -->
-          <div class="card">
-            <div class="card-title">
-              基本信息
-              <div class="spacer"></div>
-              <button class="btn small primary" @click="save" :disabled="saving">保存</button>
-              <button class="btn small" @click="runNow" :disabled="running">▶ 运行</button>
-              <button class="btn small danger" @click="remove">删除</button>
-            </div>
-
-            <div class="row">
-              <div class="field">
-                <label>名称</label>
-                <input type="text" v-model="current.name" placeholder="例如：每日数据同步" />
-              </div>
-              <div class="field">
-                <label>描述</label>
-                <input type="text" v-model="current.description" placeholder="可选" />
-              </div>
-            </div>
-
-            <div class="row">
-              <div class="field">
-                <label>Cron 表达式（留空表示不定时）</label>
-                <input type="text" v-model="current.cron" placeholder="0 8 * * * 或 @every 1h" />
-                <div class="hint">支持 5 段 <code>分 时 日 月 周</code> 或 6 段（首位为秒），也可用 <code>@every 30s</code> / <code>@hourly</code></div>
-              </div>
-              <div class="field">
-                <label>启用</label>
-                <div class="switch">
-                  <input type="checkbox" v-model="current.enabled" />
-                  <span class="hint" style="margin:0;">关闭后 Webhook 与定时任务都不会触发</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="row">
-              <div class="field">
-                <label>分组（同一分组内的工作流串行执行，不同分组并行；留空则各自独立）</label>
-                <input type="text" v-model="current.group" placeholder="例如：mailer / etl，留空表示不分组" />
-                <div class="hint">定时调度时，同分组的工作流同时仅运行一个实例，避免重复执行副作用</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Webhook -->
-          <div class="card">
-            <div class="card-title">Webhook 触发</div>
-            <div class="field">
-              <label>调用地址（外部系统 POST 此地址即可触发流程）</label>
-              <div style="display:flex;gap:8px;">
-                <input type="text" class="mono" :value="webhookURL" readonly />
-                <button class="btn" @click="copy(webhookURL)">复制</button>
-                <button class="btn" @click="testWebhook">测试</button>
-              </div>
-              <div class="hint">
-                请求体 / 表单 / 查询参数会作为 <code>{{ '{{ .trigger.xxx }}' }}</code> 注入节点配置
-              </div>
-            </div>
-          </div>
-
-          <!-- 节点编排 -->
-          <div class="card">
-            <div class="card-title">
-              节点编排
-              <div class="spacer"></div>
-              <button class="btn small" @click="addNode">+ 添加节点</button>
-            </div>
-
-            <div v-if="!nodes.length" class="empty" style="padding:20px 0;">
-              还没有节点，点击右上「添加节点」开始编排
-            </div>
-
-            <div v-for="(n, i) in nodes" :key="n.id" class="node">
-              <div class="node-head">
-                <div class="node-idx">{{ i + 1 }}</div>
-                <input type="text" v-model="n.name" placeholder="节点名称"
-                       style="flex:1;background:transparent;border:none;outline:none;font-weight:500;" />
-                <select v-model="n.type" @change="onTypeChange(n)" style="width:120px;">
-                  <option v-for="t in nodeTypes" :key="t" :value="t">{{ t }}</option>
-                </select>
-                <span class="type-tag">{{ n.id }}</span>
-                <button class="btn small" @click="moveUp(i)" :disabled="i === 0">↑</button>
-                <button class="btn small" @click="moveDown(i)" :disabled="i === nodes.length - 1">↓</button>
-                <button class="btn small danger" @click="removeNode(i)">✕</button>
-              </div>
-
-              <!-- http -->
-              <template v-if="n.type === 'http'">
-                <div class="row">
-                  <div class="field">
-                    <label>方法</label>
-                    <select v-model="n.config.method">
-                      <option>GET</option><option>POST</option><option>PUT</option>
-                      <option>PATCH</option><option>DELETE</option>
-                    </select>
-                  </div>
-                  <div class="field">
-                    <label>超时（秒）</label>
-                    <input type="number" v-model.number="n.config.timeout" />
-                  </div>
-                </div>
-                <div class="field">
-                  <label>URL</label>
-                  <input type="text" class="mono" v-model="n.config.url" placeholder="https://api.example.com/hook" />
-                </div>
-                <div class="field">
-                  <label>请求头（JSON 对象）</label>
-                  <textarea v-model="n.headersText" placeholder='{"Authorization":"Bearer xxx"}'></textarea>
-                </div>
-                <div class="field">
-                  <label>请求体</label>
-                  <textarea v-model="n.config.body" :placeholder="'{{ .trigger.order_id }}'"></textarea>
-                </div>
-              </template>
-
-              <!-- shell -->
-              <template v-else-if="n.type === 'shell'">
-                <div class="row">
-                  <div class="field">
-                    <label>超时（秒）</label>
-                    <input type="number" v-model.number="n.config.timeout" />
-                  </div>
-                  <div class="field">
-                    <label>工作目录（可选）</label>
-                    <input type="text" v-model="n.config.workdir" />
-                  </div>
-                </div>
-                <div class="field">
-                  <label>命令</label>
-                  <textarea class="mono" v-model="n.config.command" placeholder="echo hello"></textarea>
-                  <div class="hint">Windows 默认 PowerShell，Linux / macOS 默认 <code>/bin/sh -c</code>；退出码非 0 视为失败</div>
-                </div>
-              </template>
-
-              <!-- delay -->
-              <template v-else-if="n.type === 'delay'">
-                <div class="field">
-                  <label>等待秒数</label>
-                  <input type="number" v-model.number="n.config.seconds" />
-                </div>
-              </template>
-
-              <!-- ai_agent -->
-              <template v-else-if="n.type === 'ai_agent'">
-                <div class="row">
-                  <div class="field">
-                    <label>模型</label>
-                    <input type="text" class="mono" v-model="n.config.model" placeholder="gpt-4o-mini / qwen-plus" />
-                  </div>
-                  <div class="field">
-                    <label>接口地址（OpenAI 兼容）</label>
-                    <input type="text" class="mono" v-model="n.config.base_url" placeholder="https://api.openai.com/v1" />
-                  </div>
-                </div>
-                <div class="row">
-                  <div class="field">
-                    <label>API Key（留空则使用 config.yaml 的 llm.api_key）</label>
-                    <input type="text" class="mono" v-model="n.config.api_key" placeholder="sk-xxx" />
-                  </div>
-                  <div class="field">
-                    <label>单次请求超时（秒）</label>
-                    <input type="number" v-model.number="n.config.timeout" />
-                  </div>
-                </div>
-                <div class="row">
-                  <div class="field">
-                    <label>最大思考轮次（1-20）</label>
-                    <input type="number" v-model.number="n.config.max_iterations" />
-                  </div>
-                  <div class="field">
-                    <label>温度</label>
-                    <input type="number" step="0.1" v-model.number="n.config.temperature" />
-                  </div>
-                </div>
-                <div class="field">
-                  <label>系统提示词（任务指令，支持模板变量）</label>
-                  <textarea v-model="n.config.system_prompt"
-                            placeholder="分析上游 http 返回的数据，命中标记时调用 shell-run 输出日志，最后给出结论"></textarea>
-                </div>
-                <div class="field">
-                  <label>补充指令（可选）</label>
-                  <textarea v-model="n.config.user_prompt" placeholder="例如：只输出命中的 URL 列表，用 JSON 数组"></textarea>
-                </div>
-                <div class="field">
-                  <label>允许调用的工具（不选表示全部）</label>
-                  <select multiple size="3" v-model="n.config.tools" style="height:auto;">
-                    <option v-for="t in agentTools" :key="t" :value="t">{{ t }}</option>
-                  </select>
-                  <div class="hint">
-                    AI 只能在<strong>当前节点内部</strong>调用这些系统已注册的工具，不能新增/跳过节点、不能修改 DAG 结构；
-                    工具结果会回传给 AI 继续分析，节点结束后再把结论交给下游节点
-                  </div>
-                </div>
-                <div class="field">
-                  <div class="switch">
-                    <input type="checkbox" v-model="n.config.native_tools" />
-                    <span class="hint" style="margin:0;">使用原生 function calling（部分模型不支持时请关闭，走 JSON 文本协议）</span>
-                  </div>
-                </div>
-              </template>
-
-              <div class="field" style="margin-top:10px;margin-bottom:0;">
-                <label>依赖的上游节点（可多选，用于确定执行顺序；留空则按列表顺序执行）</label>
-                <select multiple size="3" v-model="n.dependsOn" style="height:auto;">
-                  <option v-for="o in nodes" :key="o.id" :value="o.id" :disabled="o.id === n.id">
-                    {{ o.name || o.id }} ({{ o.type }})
-                  </option>
-                </select>
-              </div>
-            </div>
-
-            <div class="hint" style="margin-top:10px;">
-              节点输出可用 <code>{{ '{{ .nodes.<节点ID>.字段 }}' }}</code> 在后续节点中引用，
-              例如 http 节点的 <code>{{ '{{ .nodes.n1.body }}' }}</code>、<code>{{ '{{ .nodes.n1.status_code }}' }}</code>、
-              ai_agent 节点的 <code>{{ '{{ .nodes.n2.answer }}' }}</code>
-              （省略前导点写成 <code>{{ '{{ nodes.n1.body }}' }}</code> 亦可）
-            </div>
-          </div>
-
-          <!-- 运行记录 -->
-          <div class="card">
-            <div class="card-title">
-              运行记录
-              <span v-if="polling" class="hint" style="margin:0;color:var(--warn);">● 运行中，自动刷新</span>
-              <div class="spacer"></div>
-              <button class="btn small" @click="loadRuns()" :disabled="loadingRuns">刷新</button>
-            </div>
-            <div class="tabs">
-              <button class="tab" :class="{active: runFilter === 0}" @click="setFilter(0)">全部</button>
-              <button class="tab" :class="{active: runFilter === current.id}" @click="setFilter(current.id)">当前工作流</button>
-            </div>
-
-            <table v-if="runs.length">
-              <thead>
-                <tr>
-                  <th style="width:60px;">ID</th>
-                  <th style="width:110px;">状态</th>
-                  <th style="width:90px;">触发</th>
-                  <th style="width:150px;">开始时间</th>
-                  <th style="width:90px;">耗时</th>
-                  <th>错误信息</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="r in runs" :key="r.id" class="clickable" @click="loadDetail(r)">
-                  <td class="mono">{{ r.id }}</td>
-                  <td><span class="status" :class="r.status">{{ r.status }}</span></td>
-                  <td>{{ r.trigger }}</td>
-                  <td class="mono">{{ r.started_at || r.created_at }}</td>
-                  <td>{{ r.duration_ms }} ms</td>
-                  <td :style="{color: r.error ? 'var(--danger)' : ''}">{{ r.error || '-' }}</td>
-                </tr>
-              </tbody>
-            </table>
-            <div v-else class="empty" style="padding:24px 0;">暂无运行记录</div>
-          </div>
-
-          <!-- 运行详情 -->
-          <div class="card" v-if="detail">
-            <div class="card-title">
-              运行详情 #{{ detail.id }}
-              <span v-if="isActiveRun(detail.status)" class="hint" style="margin:0;color:var(--warn);">执行中，每 2 秒自动刷新…</span>
-              <div class="spacer"></div>
-              <button class="btn small" @click="detail = null">收起</button>
-            </div>
-            <div class="kv" style="margin-bottom:12px;">
-              <span>状态 <b><span class="status" :class="detail.status">{{ detail.status }}</span></b></span>
-              <span>触发方式 <b>{{ detail.trigger }}</b></span>
-              <span>耗时 <b>{{ detail.duration_ms }} ms</b></span>
-              <span>开始 <b class="mono">{{ detail.started_at }}</b></span>
-            </div>
-            <div class="field" v-if="detail.payload">
-              <label>触发负载</label>
-              <pre>{{ pretty(detail.payload) }}</pre>
-            </div>
-            <div v-for="(s, i) in detail.steps" :key="s.id" class="log-item">
-              <div class="log-head">
-                <span class="node-idx">{{ i + 1 }}</span>
-                <b>{{ s.node_name }}</b>
-                <span class="type-tag">{{ s.node_type }}</span>
-                <div class="spacer"></div>
-                <span class="status" :class="s.status">{{ s.status }}</span>
-                <span class="hint" style="margin:0;">{{ s.duration_ms }} ms</span>
-              </div>
-              <pre v-if="s.input">输入：{{ pretty(s.input) }}</pre>
-              <pre v-if="s.output">输出：{{ pretty(s.output) }}</pre>
-              <pre v-if="s.error" :style="{color:'var(--danger)'}">错误：{{ s.error }}</pre>
-            </div>
-          </div>
-        </template>
-      </section>
+      <section class="content" id="content"></section>
     </div>
   </div>
 
-  <div v-if="toast" class="toast" :class="toast.type">{{ toast.msg }}</div>
+  <div id="toast"></div>
 </div>
 
 <script>
-const { createApp, ref, reactive, computed, onMounted, onUnmounted } = Vue;
+(function () {
+  'use strict';
 
-// POLL_INTERVAL 运行中（pending / running）时列表与详情的轮询间隔。
-const POLL_INTERVAL = 2000;
-// WATCH_INTERVAL 感知 Cron / Webhook 等外部触发新增运行记录的间隔。
-const WATCH_INTERVAL = 30000;
+  // POLL_INTERVAL 运行中（pending / running）时列表与详情的轮询间隔。
+  var POLL_INTERVAL = 2000;
+  // WATCH_INTERVAL 感知 Cron / Webhook 等外部触发新增运行记录的间隔。
+  var WATCH_INTERVAL = 30000;
 
-createApp({
-  setup() {
-    const workflows = ref([]);
-    const current = ref(null);
-    const nodes = ref([]);
-    const runs = ref([]);
-    const detail = ref(null);
-    const nodeTypes = ref(['http', 'shell', 'delay', 'ai_agent']);
-    const agentTools = ref(['http-call', 'shell-run', 'delay-sleep']);
-    const schedulerJobs = ref(0);
-    const runFilter = ref(0);
-    const toast = ref(null);
-    const saving = ref(false);
-    const running = ref(false);
-    const loadingRuns = ref(false);
-    const polling = ref(false);
+  var $ = function (sel, root) { return (root || document).querySelector(sel); };
 
-    let nodeSeq = 0;
-    let pollTimer = null;   // 运行中详情/列表的轮询定时器
-    let watchTimer = null;  // 外部触发感知定时器
-    let lastRunID = 0;      // 已知的最大运行记录 ID，用于发现新运行
+  var state = {
+    workflows: [],
+    current: null,
+    nodes: [],
+    runs: [],
+    detail: null,
+    nodeTypes: ['http', 'shell', 'delay', 'ai_agent'],
+    agentTools: ['http-call', 'shell-run', 'delay-sleep'],
+    schedulerJobs: 0,
+    runFilter: 0
+  };
 
-    const api = async (url, options) => {
-      const res = await fetch(url, Object.assign({
-        headers: { 'Content-Type': 'application/json' }
-      }, options));
-      const text = await res.text();
-      const data = text ? JSON.parse(text) : null;
-      if (!res.ok) throw new Error((data && data.error) || '请求失败：' + res.status);
-      return data;
+  var nodeSeq = 0;
+  var pollTimer = null;   // 运行中详情/列表的轮询定时器
+  var watchTimer = null;  // 外部触发感知定时器
+  var lastRunID = 0;      // 已知的最大运行记录 ID，用于发现新运行
+  var busy = { saving: false, running: false, loadingRuns: false };
+
+  // ---------- 工具 ----------
+  function esc(v) {
+    if (v === null || v === undefined) return '';
+    return String(v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function api(url, options) {
+    var opts = Object.assign({ headers: { 'Content-Type': 'application/json' } }, options || {});
+    return fetch(url, opts).then(function (res) {
+      return res.text().then(function (text) {
+        var data = text ? JSON.parse(text) : null;
+        if (!res.ok) throw new Error((data && data.error) || ('请求失败：' + res.status));
+        return data;
+      });
+    });
+  }
+
+  var toastTimer = null;
+  function showToast(msg, type) {
+    var box = $('#toast');
+    box.className = 'toast ' + (type || 'success');
+    box.textContent = msg;
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { box.className = ''; box.textContent = ''; }, 2600);
+  }
+
+  function pretty(raw) {
+    if (!raw) return '';
+    try { return JSON.stringify(JSON.parse(raw), null, 2); }
+    catch (e) { return raw; }
+  }
+
+  function isActiveRun(status) { return status === 'pending' || status === 'running'; }
+
+  function setPath(obj, path, value) {
+    var parts = path.split('.');
+    var cur = obj;
+    for (var i = 0; i < parts.length - 1; i++) {
+      if (!cur[parts[i]]) cur[parts[i]] = {};
+      cur = cur[parts[i]];
+    }
+    cur[parts[parts.length - 1]] = value;
+  }
+
+  function readValue(el) {
+    if (el.type === 'checkbox') return el.checked;
+    if (el.tagName === 'SELECT' && el.multiple) {
+      return Array.prototype.slice.call(el.selectedOptions).map(function (o) { return o.value; });
+    }
+    if (el.type === 'number') return el.value === '' ? '' : Number(el.value);
+    return el.value;
+  }
+
+  // ---------- 默认值 ----------
+  function defaultsFor(type) {
+    if (type === 'http') return { method: 'GET', url: '', headers: {}, body: '', timeout: 30 };
+    if (type === 'shell') return { command: '', workdir: '', timeout: 60 };
+    if (type === 'ai_agent') return {
+      system_prompt: '', user_prompt: '', model: '', base_url: '', api_key: '',
+      temperature: 0.2, max_iterations: 5, timeout: 60, tools: [], native_tools: false
     };
+    return { seconds: 1 };
+  }
 
-    const showToast = (msg, type) => {
-      toast.value = { msg, type: type || 'success' };
-      setTimeout(() => { toast.value = null; }, 2600);
+  // ---------- 渲染：侧边栏 ----------
+  function renderSidebar() {
+    var box = $('#wfList');
+    if (!state.workflows.length) {
+      box.innerHTML = '<div class="empty" style="padding:24px 8px;font-size:12px;">暂无工作流</div>';
+      return;
+    }
+    box.innerHTML = state.workflows.map(function (wf) {
+      var nodeCount = 0;
+      try { nodeCount = (JSON.parse(wf.graph || '{}').nodes || []).length; } catch (e) { nodeCount = 0; }
+      var active = state.current && state.current.id === wf.id ? ' active' : '';
+      var dotColor = wf.enabled ? 'var(--success)' : 'var(--muted)';
+      return '<div class="wf-item' + active + '" data-act="selectWorkflow" data-id="' + wf.id + '">' +
+        '<div class="name"><span style="color:' + dotColor + '">●</span>' + esc(wf.name) + '</div>' +
+        '<div class="meta">' +
+          (wf.cron ? '⏱ ' + esc(wf.cron) : '未设定时') +
+          (wf.group ? ' <span class="grp">组:' + esc(wf.group) + '</span>' : '') +
+          ' · ' + nodeCount + ' 节点' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  // ---------- 渲染：主区域 ----------
+  function renderContent() {
+    var box = $('#content');
+    if (!state.current) {
+      box.innerHTML =
+        '<div class="empty">' +
+          '<div style="font-size:15px;margin-bottom:8px;">从左侧选择一个工作流，或新建一个</div>' +
+          '<div style="font-size:12px;">支持 http / shell / delay 节点，可插入 ai_agent 节点让大模型在节点内分析并调用工具，可由 Webhook 或 Cron 触发</div>' +
+        '</div>';
+      return;
+    }
+
+    var c = state.current;
+    var webhookURL = c.webhook_key ? (location.origin + '/hook/' + encodeURIComponent(c.webhook_key)) : '';
+
+    box.innerHTML =
+      // 基本信息
+      '<div class="card">' +
+        '<div class="card-title">基本信息<div class="spacer"></div>' +
+          '<button class="btn small primary" data-act="save">保存</button> ' +
+          '<button class="btn small" data-act="runNow">▶ 运行</button> ' +
+          '<button class="btn small danger" data-act="remove">删除</button>' +
+        '</div>' +
+        '<div class="row">' +
+          '<div class="field"><label>名称</label>' +
+            '<input type="text" data-wf="name" value="' + esc(c.name) + '" placeholder="例如：每日数据同步" /></div>' +
+          '<div class="field"><label>描述</label>' +
+            '<input type="text" data-wf="description" value="' + esc(c.description) + '" placeholder="可选" /></div>' +
+        '</div>' +
+        '<div class="row">' +
+          '<div class="field"><label>Cron 表达式（留空表示不定时）</label>' +
+            '<input type="text" data-wf="cron" value="' + esc(c.cron) + '" placeholder="0 8 * * * 或 @every 1h" />' +
+            '<div class="hint">支持 5 段 <code>分 时 日 月 周</code> 或 6 段（首位为秒），也可用 <code>@every 30s</code> / <code>@hourly</code></div>' +
+          '</div>' +
+          '<div class="field"><label>启用</label>' +
+            '<div class="switch">' +
+              '<input type="checkbox" data-wf="enabled"' + (c.enabled ? ' checked' : '') + ' />' +
+              '<span class="hint" style="margin:0;">关闭后 Webhook 与定时任务都不会触发</span>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="row">' +
+          '<div class="field"><label>分组（同一分组内的工作流串行执行，不同分组并行；留空则各自独立）</label>' +
+            '<input type="text" data-wf="group" value="' + esc(c.group || '') + '" placeholder="例如：mailer / etl，留空表示不分组" />' +
+            '<div class="hint">定时调度时，同分组的工作流同时仅运行一个实例，避免重复执行副作用</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+
+      // Webhook
+      '<div class="card">' +
+        '<div class="card-title">Webhook 触发</div>' +
+        '<div class="field">' +
+          '<label>调用地址（外部系统 POST 此地址即可触发流程）</label>' +
+          '<div style="display:flex;gap:8px;">' +
+            '<input type="text" class="mono" id="webhookURL" value="' + esc(webhookURL) + '" readonly />' +
+            '<button class="btn" data-act="copyWebhook">复制</button>' +
+            '<button class="btn" data-act="testWebhook">测试</button>' +
+          '</div>' +
+          '<div class="hint">请求体 / 表单 / 查询参数会作为 <code>{{ .trigger.xxx }}</code> 注入节点配置</div>' +
+        '</div>' +
+      '</div>' +
+
+      // 节点编排
+      '<div class="card">' +
+        '<div class="card-title">节点编排<div class="spacer"></div>' +
+          '<button class="btn small" data-act="addNode">+ 添加节点</button>' +
+        '</div>' +
+        '<div id="nodeList"></div>' +
+        '<div class="hint" style="margin-top:10px;">' +
+          '节点输出可用 <code>{{ .nodes.&lt;节点ID&gt;.字段 }}</code> 在后续节点中引用，' +
+          '例如 http 节点的 <code>{{ .nodes.n1.body }}</code>、<code>{{ .nodes.n1.status_code }}</code>、' +
+          'ai_agent 节点的 <code>{{ .nodes.n2.answer }}</code>' +
+          '（省略前导点写成 <code>{{ nodes.n1.body }}</code> 亦可）' +
+        '</div>' +
+      '</div>' +
+
+      // 运行记录
+      '<div class="card">' +
+        '<div class="card-title">运行记录' +
+          '<span id="pollingTag" class="hint" style="margin:0;color:var(--warn);display:none;">● 运行中，自动刷新</span>' +
+          '<div class="spacer"></div>' +
+          '<button class="btn small" data-act="refreshRuns">刷新</button>' +
+        '</div>' +
+        '<div class="tabs">' +
+          '<button class="tab" data-act="setFilter" data-id="0">全部</button>' +
+          '<button class="tab" data-act="setFilter" data-id="' + c.id + '">当前工作流</button>' +
+        '</div>' +
+        '<div id="runsBox"></div>' +
+      '</div>' +
+
+      // 运行详情
+      '<div id="detailBox"></div>';
+
+    renderNodes();
+    renderRuns();
+    renderDetail();
+    renderTabs();
+    syncPolling();
+  }
+
+  function renderTabs() {
+    var btns = document.querySelectorAll('[data-act="setFilter"]');
+    for (var i = 0; i < btns.length; i++) {
+      var id = Number(btns[i].getAttribute('data-id'));
+      btns[i].className = 'tab' + (id === state.runFilter ? ' active' : '');
+    }
+  }
+
+  // ---------- 渲染：节点 ----------
+  function nodeHTML(n, i) {
+    var cfg = n.config || {};
+    var body = '';
+
+    if (n.type === 'http') {
+      body =
+        '<div class="row">' +
+          '<div class="field"><label>方法</label>' +
+            '<select data-bind="config.method">' +
+              ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map(function (m) {
+                return '<option' + (cfg.method === m ? ' selected' : '') + '>' + m + '</option>';
+              }).join('') +
+            '</select>' +
+          '</div>' +
+          '<div class="field"><label>超时（秒）</label>' +
+            '<input type="number" data-bind="config.timeout" value="' + esc(cfg.timeout) + '" /></div>' +
+        '</div>' +
+        '<div class="field"><label>URL</label>' +
+          '<input type="text" class="mono" data-bind="config.url" value="' + esc(cfg.url) + '" placeholder="https://api.example.com/hook" /></div>' +
+        '<div class="field"><label>请求头（JSON 对象）</label>' +
+          '<textarea data-bind="headersText" placeholder=\'{"Authorization":"Bearer xxx"}\'>' + esc(n.headersText || '') + '</textarea></div>' +
+        '<div class="field"><label>请求体</label>' +
+          '<textarea data-bind="config.body" placeholder="{{ .trigger.order_id }}">' + esc(cfg.body || '') + '</textarea></div>';
+    } else if (n.type === 'shell') {
+      body =
+        '<div class="row">' +
+          '<div class="field"><label>超时（秒）</label>' +
+            '<input type="number" data-bind="config.timeout" value="' + esc(cfg.timeout) + '" /></div>' +
+          '<div class="field"><label>工作目录（可选）</label>' +
+            '<input type="text" data-bind="config.workdir" value="' + esc(cfg.workdir || '') + '" /></div>' +
+        '</div>' +
+        '<div class="field"><label>命令</label>' +
+          '<textarea class="mono" data-bind="config.command" placeholder="echo hello">' + esc(cfg.command || '') + '</textarea>' +
+          '<div class="hint">Windows 默认 PowerShell，Linux / macOS 默认 <code>/bin/sh -c</code>；退出码非 0 视为失败</div>' +
+        '</div>';
+    } else if (n.type === 'delay') {
+      body =
+        '<div class="field"><label>等待秒数</label>' +
+          '<input type="number" data-bind="config.seconds" value="' + esc(cfg.seconds) + '" /></div>';
+    } else if (n.type === 'ai_agent') {
+      var tools = Array.isArray(cfg.tools) ? cfg.tools : [];
+      body =
+        '<div class="row">' +
+          '<div class="field"><label>模型</label>' +
+            '<input type="text" class="mono" data-bind="config.model" value="' + esc(cfg.model || '') + '" placeholder="gpt-4o-mini / qwen-plus" /></div>' +
+          '<div class="field"><label>接口地址（OpenAI 兼容）</label>' +
+            '<input type="text" class="mono" data-bind="config.base_url" value="' + esc(cfg.base_url || '') + '" placeholder="https://api.openai.com/v1" /></div>' +
+        '</div>' +
+        '<div class="row">' +
+          '<div class="field"><label>API Key（留空则使用 config.yaml 的 llm.api_key）</label>' +
+            '<input type="text" class="mono" data-bind="config.api_key" value="' + esc(cfg.api_key || '') + '" placeholder="sk-xxx" /></div>' +
+          '<div class="field"><label>单次请求超时（秒）</label>' +
+            '<input type="number" data-bind="config.timeout" value="' + esc(cfg.timeout) + '" /></div>' +
+        '</div>' +
+        '<div class="row">' +
+          '<div class="field"><label>最大思考轮次（1-20）</label>' +
+            '<input type="number" data-bind="config.max_iterations" value="' + esc(cfg.max_iterations) + '" /></div>' +
+          '<div class="field"><label>温度</label>' +
+            '<input type="number" step="0.1" data-bind="config.temperature" value="' + esc(cfg.temperature) + '" /></div>' +
+        '</div>' +
+        '<div class="field"><label>系统提示词（任务指令，支持模板变量）</label>' +
+          '<textarea data-bind="config.system_prompt" placeholder="分析上游 http 返回的数据，命中标记时调用 shell-run 输出日志，最后给出结论">' + esc(cfg.system_prompt || '') + '</textarea></div>' +
+        '<div class="field"><label>补充指令（可选）</label>' +
+          '<textarea data-bind="config.user_prompt" placeholder="例如：只输出命中的 URL 列表，用 JSON 数组">' + esc(cfg.user_prompt || '') + '</textarea></div>' +
+        '<div class="field"><label>允许调用的工具（不选表示全部）</label>' +
+          '<select multiple size="3" data-bind="config.tools" style="height:auto;">' +
+            state.agentTools.map(function (t) {
+              return '<option value="' + esc(t) + '"' + (tools.indexOf(t) >= 0 ? ' selected' : '') + '>' + esc(t) + '</option>';
+            }).join('') +
+          '</select>' +
+          '<div class="hint">AI 只能在<strong>当前节点内部</strong>调用这些系统已注册的工具，不能新增/跳过节点、不能修改 DAG 结构；' +
+          '工具结果会回传给 AI 继续分析，节点结束后再把结论交给下游节点</div>' +
+        '</div>' +
+        '<div class="field"><div class="switch">' +
+          '<input type="checkbox" data-bind="config.native_tools"' + (cfg.native_tools ? ' checked' : '') + ' />' +
+          '<span class="hint" style="margin:0;">使用原生 function calling（部分模型不支持时请关闭，走 JSON 文本协议）</span>' +
+        '</div></div>';
+    }
+
+    var typeOpts = state.nodeTypes.map(function (t) {
+      return '<option value="' + esc(t) + '"' + (n.type === t ? ' selected' : '') + '>' + esc(t) + '</option>';
+    }).join('');
+
+    var depOpts = state.nodes.map(function (o) {
+      var sel = (n.dependsOn || []).indexOf(o.id) >= 0 ? ' selected' : '';
+      return '<option value="' + esc(o.id) + '"' + sel + (o.id === n.id ? ' disabled' : '') + '>' +
+        esc(o.name || o.id) + ' (' + esc(o.type) + ')</option>';
+    }).join('');
+
+    return '<div class="node" data-idx="' + i + '">' +
+      '<div class="node-head">' +
+        '<div class="node-idx">' + (i + 1) + '</div>' +
+        '<input type="text" data-bind="name" value="' + esc(n.name) + '" placeholder="节点名称" ' +
+          'style="flex:1;background:transparent;border:none;outline:none;font-weight:500;" />' +
+        '<select data-bind="type" data-act="changeType" style="width:120px;">' + typeOpts + '</select>' +
+        '<span class="type-tag">' + esc(n.id) + '</span>' +
+        '<button class="btn small" data-act="moveUp" data-idx="' + i + '"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
+        '<button class="btn small" data-act="moveDown" data-idx="' + i + '"' + (i === state.nodes.length - 1 ? ' disabled' : '') + '>↓</button>' +
+        '<button class="btn small danger" data-act="removeNode" data-idx="' + i + '">✕</button>' +
+      '</div>' +
+      body +
+      '<div class="field" style="margin-top:10px;margin-bottom:0;">' +
+        '<label>依赖的上游节点（可多选，用于确定执行顺序；留空则按列表顺序执行）</label>' +
+        '<select multiple size="3" data-bind="dependsOn" style="height:auto;">' + depOpts + '</select>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function renderNodes() {
+    var box = $('#nodeList');
+    if (!box) return;
+    if (!state.nodes.length) {
+      box.innerHTML = '<div class="empty" style="padding:20px 0;">还没有节点，点击右上「添加节点」开始编排</div>';
+      return;
+    }
+    box.innerHTML = state.nodes.map(nodeHTML).join('');
+  }
+
+  // ---------- 渲染：运行记录 ----------
+  function renderRuns() {
+    var box = $('#runsBox');
+    if (!box) return;
+    if (!state.runs.length) {
+      box.innerHTML = '<div class="empty" style="padding:24px 0;">暂无运行记录</div>';
+      return;
+    }
+    box.innerHTML =
+      '<table><thead><tr>' +
+        '<th style="width:60px;">ID</th><th style="width:110px;">状态</th><th style="width:90px;">触发</th>' +
+        '<th style="width:150px;">开始时间</th><th style="width:90px;">耗时</th><th>错误信息</th>' +
+      '</tr></thead><tbody>' +
+      state.runs.map(function (r) {
+        return '<tr class="clickable" data-act="loadDetail" data-id="' + r.id + '">' +
+          '<td class="mono">' + r.id + '</td>' +
+          '<td><span class="status ' + esc(r.status) + '">' + esc(r.status) + '</span></td>' +
+          '<td>' + esc(r.trigger) + '</td>' +
+          '<td class="mono">' + esc(r.started_at || r.created_at) + '</td>' +
+          '<td>' + esc(r.duration_ms) + ' ms</td>' +
+          '<td' + (r.error ? ' style="color:var(--danger)"' : '') + '>' + esc(r.error || '-') + '</td>' +
+        '</tr>';
+      }).join('') +
+      '</tbody></table>';
+  }
+
+  // ---------- 渲染：运行详情 ----------
+  function renderDetail() {
+    var box = $('#detailBox');
+    if (!box) return;
+    var d = state.detail;
+    if (!d) { box.innerHTML = ''; return; }
+
+    var steps = (d.steps || []).map(function (s, i) {
+      return '<div class="log-item">' +
+        '<div class="log-head">' +
+          '<span class="node-idx">' + (i + 1) + '</span>' +
+          '<b>' + esc(s.node_name) + '</b>' +
+          '<span class="type-tag">' + esc(s.node_type) + '</span>' +
+          '<div class="spacer"></div>' +
+          '<span class="status ' + esc(s.status) + '">' + esc(s.status) + '</span>' +
+          '<span class="hint" style="margin:0;">' + esc(s.duration_ms) + ' ms</span>' +
+        '</div>' +
+        (s.input ? '<pre>输入：' + esc(pretty(s.input)) + '</pre>' : '') +
+        (s.output ? '<pre>输出：' + esc(pretty(s.output)) + '</pre>' : '') +
+        (s.error ? '<pre style="color:var(--danger)">错误：' + esc(s.error) + '</pre>' : '') +
+      '</div>';
+    }).join('');
+
+    box.innerHTML =
+      '<div class="card">' +
+        '<div class="card-title">运行详情 #' + d.id +
+          (isActiveRun(d.status) ? '<span class="hint" style="margin:0;color:var(--warn);">执行中，每 2 秒自动刷新…</span>' : '') +
+          '<div class="spacer"></div>' +
+          '<button class="btn small" data-act="closeDetail">收起</button>' +
+        '</div>' +
+        '<div class="kv" style="margin-bottom:12px;">' +
+          '<span>状态 <b><span class="status ' + esc(d.status) + '">' + esc(d.status) + '</span></b></span>' +
+          '<span>触发方式 <b>' + esc(d.trigger) + '</b></span>' +
+          '<span>耗时 <b>' + esc(d.duration_ms) + ' ms</b></span>' +
+          '<span>开始 <b class="mono">' + esc(d.started_at) + '</b></span>' +
+        '</div>' +
+        (d.payload ? '<div class="field"><label>触发负载</label><pre>' + esc(pretty(d.payload)) + '</pre></div>' : '') +
+        steps +
+      '</div>';
+  }
+
+  function renderTopbar() {
+    $('#jobCount').textContent = state.schedulerJobs;
+    $('#typeList').textContent = state.nodeTypes.join(' / ');
+  }
+
+  // ---------- 轮询 ----------
+  function hasActiveRun() {
+    var listActive = state.runs.some(function (r) { return isActiveRun(r.status); });
+    return listActive || !!(state.detail && isActiveRun(state.detail.status));
+  }
+
+  function startPolling() {
+    if (pollTimer) return;
+    pollTimer = setInterval(pollTick, POLL_INTERVAL);
+    var tag = $('#pollingTag');
+    if (tag) tag.style.display = '';
+  }
+
+  function stopPolling() {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = null;
+    var tag = $('#pollingTag');
+    if (tag) tag.style.display = 'none';
+  }
+
+  function syncPolling() {
+    if (hasActiveRun()) startPolling(); else stopPolling();
+  }
+
+  function pollTick() {
+    loadRuns(true).then(function () {
+      if (state.detail) return loadDetail(state.detail.id, true);
+    }).then(function () {
+      if (!hasActiveRun()) stopPolling();
+    });
+  }
+
+  function watchTick() {
+    if (pollTimer || !state.current || !state.current.id) return;
+    loadRuns(true).then(function (appeared) {
+      if (appeared) showToast('检测到新的运行记录');
+    });
+  }
+
+  // ---------- 业务 ----------
+  function loadWorkflows() {
+    return api('/api/workflows').then(function (list) {
+      state.workflows = list || [];
+      renderSidebar();
+    });
+  }
+
+  function selectWorkflow(wf) {
+    return api('/api/workflows/' + wf.id).then(function (full) {
+      stopPolling();
+      lastRunID = 0;
+      state.current = full;
+      state.detail = null;
+      state.runFilter = full.id;
+      parseGraph();
+      renderSidebar();
+      renderContent();
+      return loadRuns();
+    });
+  }
+
+  function createWorkflow() {
+    stopPolling();
+    lastRunID = 0;
+    state.current = {
+      id: 0, name: '新工作流', description: '', enabled: true,
+      cron: '', group: '', webhook_key: '', graph: ''
     };
+    state.nodes = [];
+    state.detail = null;
+    state.runFilter = 0;
+    state.runs = [];
+    renderSidebar();
+    renderContent();
+  }
 
-    const webhookURL = computed(() => {
-      if (!current.value) return '';
-      return location.origin + '/hook/' + current.value.webhook_key;
+  function parseGraph() {
+    var graph = { nodes: [], edges: [] };
+    try { graph = JSON.parse(state.current.graph || '{}'); } catch (e) { /* 空图 */ }
+    var src = graph.nodes || [];
+    var edges = graph.edges || [];
+    nodeSeq = src.length;
+
+    state.nodes = src.map(function (n) {
+      var deps = edges.filter(function (e) { return e.target === n.id; })
+                      .map(function (e) { return e.source; });
+      var headers = (n.config && n.config.headers) || {};
+      return {
+        id: n.id,
+        type: n.type,
+        name: n.name || n.type,
+        dependsOn: deps,
+        headersText: Object.keys(headers).length ? JSON.stringify(headers, null, 2) : '',
+        config: Object.assign(defaultsFor(n.type), n.config || {})
+      };
+    });
+  }
+
+  function buildGraph() {
+    var ns = state.nodes.map(function (n) {
+      var cfg = Object.assign({}, n.config);
+      if (n.type === 'http') {
+        var headers = {};
+        if (n.headersText && n.headersText.trim()) {
+          try { headers = JSON.parse(n.headersText); }
+          catch (e) { throw new Error('节点「' + (n.name || n.id) + '」的请求头不是合法 JSON'); }
+        }
+        cfg.headers = headers;
+      }
+      return { id: n.id, type: n.type, name: n.name || n.type, config: cfg };
     });
 
-    // ---------- 工作流 ----------
-    const loadWorkflows = async () => {
-      workflows.value = await api('/api/workflows') || [];
-    };
+    var edges = [];
+    state.nodes.forEach(function (n) {
+      (n.dependsOn || []).forEach(function (src) {
+        edges.push({ source: src, target: n.id });
+      });
+    });
 
-    const selectWorkflow = async (wf) => {
-      const full = await api('/api/workflows/' + wf.id);
-      stopPolling();
-      lastRunID = 0;
-      current.value = full;
-      detail.value = null;
-      runFilter.value = full.id;
-      parseGraph();
-      loadRuns();
-    };
+    state.current.graph = JSON.stringify({ nodes: ns, edges: edges });
+  }
 
-    const createWorkflow = () => {
-      stopPolling();
-      lastRunID = 0;
-      current.value = {
-        id: 0, name: '新工作流', description: '', enabled: true,
-        cron: '', group: '', webhook_key: '', graph: ''
-      };
-      nodes.value = [];
-      detail.value = null;
-      runFilter.value = 0;
-      runs.value = [];
-    };
+  function save() {
+    if (!state.current) return;
+    busy.saving = true;
+    var btn = document.querySelector('[data-act="save"]');
+    if (btn) btn.disabled = true;
 
-    const save = async () => {
-      saving.value = true;
-      try {
-        buildGraph();
-        const isNew = !current.value.id;
-        const body = JSON.stringify({
-          name: current.value.name,
-          description: current.value.description,
-          enabled: current.value.enabled,
-          cron: current.value.cron,
-          webhook_key: current.value.webhook_key,
-          graph: current.value.graph
-        });
-        const saved = isNew
-          ? await api('/api/workflows', { method: 'POST', body })
-          : await api('/api/workflows/' + current.value.id, { method: 'PUT', body });
+    var go = function () {
+      try { buildGraph(); }
+      catch (e) { showToast(e.message, 'error'); return finish(); }
+
+      var c = state.current;
+      var body = JSON.stringify({
+        name: c.name,
+        description: c.description,
+        enabled: c.enabled,
+        cron: c.cron,
+        group: c.group || '',
+        webhook_key: c.webhook_key,
+        graph: c.graph
+      });
+
+      var req = c.id
+        ? api('/api/workflows/' + c.id, { method: 'PUT', body: body })
+        : api('/api/workflows', { method: 'POST', body: body });
+
+      return req.then(function (saved) {
         showToast('保存成功');
-        await loadWorkflows();
-        await selectWorkflow(saved);
-      } catch (e) {
+        return loadWorkflows().then(function () { return selectWorkflow(saved); });
+      }).catch(function (e) {
         showToast(e.message, 'error');
-      } finally {
-        saving.value = false;
-      }
+      }).then(finish);
     };
 
-    const remove = async () => {
-      if (!current.value.id) { createWorkflow(); return; }
-      if (!confirm('确认删除工作流「' + current.value.name + '」？')) return;
-      try {
-        await api('/api/workflows/' + current.value.id, { method: 'DELETE' });
-        current.value = null;
-        await loadWorkflows();
-        showToast('已删除');
-      } catch (e) { showToast(e.message, 'error'); }
-    };
+    function finish() {
+      busy.saving = false;
+      var b = document.querySelector('[data-act="save"]');
+      if (b) b.disabled = false;
+    }
 
-    // ---------- 图编辑 ----------
-    const defaultsFor = (type) => {
-      if (type === 'http') return { method: 'GET', url: '', headers: {}, body: '', timeout: 30 };
-      if (type === 'shell') return { command: '', workdir: '', timeout: 60 };
-      if (type === 'ai_agent') return {
-        system_prompt: '', user_prompt: '', model: '', base_url: '', api_key: '',
-        temperature: 0.2, max_iterations: 5, timeout: 60, tools: [], native_tools: false
-      };
-      return { seconds: 1 };
-    };
+    return go();
+  }
 
-    const addNode = () => {
-      nodeSeq++;
-      const id = 'n' + nodeSeq;
-      nodes.value.push({
-        id, type: 'http', name: '节点 ' + nodeSeq,
-        dependsOn: [], headersText: '', config: defaultsFor('http')
-      });
-    };
+  function remove() {
+    if (!state.current) return;
+    if (!state.current.id) { createWorkflow(); return; }
+    if (!confirm('确认删除工作流「' + state.current.name + '」？')) return;
+    api('/api/workflows/' + state.current.id, { method: 'DELETE' }).then(function () {
+      state.current = null;
+      state.nodes = [];
+      state.runs = [];
+      state.detail = null;
+      stopPolling();
+      return loadWorkflows();
+    }).then(function () {
+      renderContent();
+      showToast('已删除');
+    }).catch(function (e) { showToast(e.message, 'error'); });
+  }
 
-    const onTypeChange = (n) => { n.config = defaultsFor(n.type); };
-    const removeNode = (i) => {
-      const removed = nodes.value[i].id;
-      nodes.value.splice(i, 1);
-      nodes.value.forEach(n => {
-        n.dependsOn = n.dependsOn.filter(d => d !== removed);
-      });
-    };
-    const moveUp = (i) => { if (i > 0) nodes.value.splice(i - 1, 0, nodes.value.splice(i, 1)[0]); };
-    const moveDown = (i) => { if (i < nodes.value.length - 1) nodes.value.splice(i + 1, 0, nodes.value.splice(i, 1)[0]); };
+  function addNode() {
+    nodeSeq++;
+    var id = 'n' + nodeSeq;
+    state.nodes.push({
+      id: id, type: 'http', name: '节点 ' + nodeSeq,
+      dependsOn: [], headersText: '', config: defaultsFor('http')
+    });
+    renderNodes();
+  }
 
-    const parseGraph = () => {
-      let graph = { nodes: [], edges: [] };
-      try { graph = JSON.parse(current.value.graph || '{}'); } catch (e) { /* 空图 */ }
-      const src = graph.nodes || [];
-      const edges = graph.edges || [];
-      nodeSeq = src.length;
+  function setFilter(id) {
+    state.runFilter = id;
+    lastRunID = 0;
+    renderTabs();
+    loadRuns();
+  }
 
-      nodes.value = src.map((n) => {
-        const deps = edges.filter(e => e.target === n.id).map(e => e.source);
-        const headers = (n.config && n.config.headers) || {};
-        return {
-          id: n.id,
-          type: n.type,
-          name: n.name || n.type,
-          dependsOn: deps,
-          headersText: Object.keys(headers).length ? JSON.stringify(headers, null, 2) : '',
-          config: Object.assign(defaultsFor(n.type), n.config || {})
-        };
-      });
-    };
+  // loadRuns 拉取运行记录列表，silent 为真时不显示加载态与错误提示（轮询用）。
+  // 返回值表示本次是否出现了比上次更新的运行记录。
+  function loadRuns(silent) {
+    if (!silent) busy.loadingRuns = true;
+    var id = state.runFilter || (state.current && state.current.id);
+    return api('/api/runs?workflow_id=' + (id || '') + '&limit=30').then(function (list) {
+      state.runs = list || [];
+      var maxID = state.runs.reduce(function (m, r) { return r.id > m ? r.id : m; }, 0);
+      var appeared = lastRunID > 0 && maxID > lastRunID;
+      lastRunID = maxID;
+      renderRuns();
+      syncPolling();
+      return appeared;
+    }).catch(function (e) {
+      if (!silent) showToast(e.message, 'error');
+      return false;
+    }).then(function (v) {
+      if (!silent) busy.loadingRuns = false;
+      return v;
+    });
+  }
 
-    const buildGraph = () => {
-      const ns = nodes.value.map(n => {
-        const cfg = Object.assign({}, n.config);
-        if (n.type === 'http') {
-          let headers = {};
-          if (n.headersText && n.headersText.trim()) {
-            try { headers = JSON.parse(n.headersText); } catch (e) {
-              throw new Error('节点「' + (n.name || n.id) + '」的请求头不是合法 JSON');
-            }
-          }
-          cfg.headers = headers;
-        }
-        return { id: n.id, type: n.type, name: n.name || n.type, config: cfg };
-      });
+  function loadDetail(id, silent) {
+    return api('/api/runs/' + id).then(function (d) {
+      state.detail = d;
+      renderDetail();
+      syncPolling();
+    }).catch(function (e) {
+      if (!silent) showToast(e.message, 'error');
+    });
+  }
 
-      const edges = [];
-      nodes.value.forEach(n => {
-        (n.dependsOn || []).forEach(src => {
-          edges.push({ source: src, target: n.id });
-        });
-      });
+  function runNow() {
+    if (!state.current || !state.current.id) { showToast('请先保存工作流', 'error'); return; }
+    busy.running = true;
+    api('/api/workflows/' + state.current.id + '/run', {
+      method: 'POST', body: JSON.stringify({ source: 'web-ui' })
+    }).then(function (run) {
+      showToast('已触发运行 #' + run.id + '，进度自动刷新');
+      state.runFilter = state.current.id;
+      renderTabs();
+      // 先用触发返回的记录占位，详情卡片立即可见，再由轮询补全节点日志。
+      state.detail = Object.assign({ steps: [] }, run);
+      renderDetail();
+      return loadRuns(true).then(function () { return loadDetail(run.id, true); });
+    }).then(function () {
+      syncPolling();
+    }).catch(function (e) {
+      showToast(e.message, 'error');
+    }).then(function () { busy.running = false; });
+  }
 
-      current.value.graph = JSON.stringify({ nodes: ns, edges });
-    };
-
-    // ---------- 运行 ----------
-    // isActiveRun 判断状态是否为非终态（仍需继续轮询）。
-    const isActiveRun = (status) => status === 'pending' || status === 'running';
-
-    const hasActiveRun = () =>
-      runs.value.some(r => isActiveRun(r.status)) ||
-      !!(detail.value && isActiveRun(detail.value.status));
-
-    const startPolling = () => {
-      if (pollTimer) return;
-      polling.value = true;
-      pollTimer = setInterval(pollTick, POLL_INTERVAL);
-    };
-
-    const stopPolling = () => {
-      if (pollTimer) clearInterval(pollTimer);
-      pollTimer = null;
-      polling.value = false;
-    };
-
-    // syncPolling 按当前是否存在未结束的运行，自动开启或停止轮询。
-    const syncPolling = () => { hasActiveRun() ? startPolling() : stopPolling(); };
-
-    // pollTick 单次轮询：刷新列表与已展开的详情，全部进入终态后自动停止。
-    const pollTick = async () => {
-      await loadRuns(true);
-      if (detail.value) await loadDetail({ id: detail.value.id }, true);
-      if (!hasActiveRun()) stopPolling();
-    };
-
-    // watchTick 定时感知 Cron / Webhook 等外部触发新增的运行记录。
-    const watchTick = async () => {
-      if (pollTimer || !current.value || !current.value.id) return;
-      const appeared = await loadRuns(true);
-      if (appeared) showToast('检测到新的运行记录');
-    };
-
-    const runNow = async () => {
-      if (!current.value.id) { showToast('请先保存工作流', 'error'); return; }
-      running.value = true;
-      try {
-        const run = await api('/api/workflows/' + current.value.id + '/run', {
-          method: 'POST', body: JSON.stringify({ source: 'web-ui' })
-        });
-        showToast('已触发运行 #' + run.id + '，进度自动刷新');
-        runFilter.value = current.value.id;
-        // 先用触发返回的记录占位，详情卡片立即可见，再由轮询补全节点日志。
-        detail.value = Object.assign({ steps: [] }, run);
-        await loadRuns(true);
-        await loadDetail(run, true);
-        syncPolling();
-      } catch (e) {
-        showToast(e.message, 'error');
-      } finally { running.value = false; }
-    };
-
-    const testWebhook = async () => {
-      if (!current.value.id) { showToast('请先保存工作流', 'error'); return; }
-      try {
-        const res = await fetch('/hook/' + current.value.webhook_key, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ source: 'webhook-test', at: new Date().toISOString() })
-        });
-        const data = await res.json();
+  function testWebhook() {
+    if (!state.current || !state.current.id) { showToast('请先保存工作流', 'error'); return; }
+    fetch('/hook/' + encodeURIComponent(state.current.webhook_key), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: 'webhook-test', at: new Date().toISOString() })
+    }).then(function (res) {
+      return res.json().then(function (data) {
         if (!res.ok) throw new Error(data.error || '触发失败');
         showToast('Webhook 已触发，运行 #' + data.run_id);
-        runFilter.value = current.value.id;
-        await loadRuns(true);
-        await loadDetail({ id: data.run_id }, true);
-        syncPolling();
-      } catch (e) { showToast(e.message, 'error'); }
-    };
-
-    const setFilter = (id) => { runFilter.value = id; lastRunID = 0; loadRuns(); };
-
-    // loadRuns 拉取运行记录列表，silent 为真时不显示加载态与错误提示（轮询用）。
-    // 返回值表示本次是否出现了比上次更新的运行记录。
-    const loadRuns = async (silent) => {
-      if (!silent) loadingRuns.value = true;
-      try {
-        const id = runFilter.value || (current.value && current.value.id);
-        const list = await api('/api/runs?workflow_id=' + (id || '') + '&limit=30') || [];
-        runs.value = list;
-        const maxID = list.reduce((m, r) => (r.id > m ? r.id : m), 0);
-        const appeared = lastRunID > 0 && maxID > lastRunID;
-        lastRunID = maxID;
-        syncPolling();
-        return appeared;
-      } catch (e) {
-        if (!silent) showToast(e.message, 'error');
-        return false;
-      } finally {
-        if (!silent) loadingRuns.value = false;
-      }
-    };
-
-    const loadDetail = async (run, silent) => {
-      try {
-        detail.value = await api('/api/runs/' + run.id);
-      } catch (e) {
-        if (!silent) showToast(e.message, 'error');
-      }
-    };
-
-    const refreshStatus = async () => {
-      try {
-        const s = await api('/status');
-        showToast('CPU ' + s.cpu.usage.toFixed(1) + '% · 内存 ' + s.memory.usage.toFixed(1) + '% · 运行 ' + s.uptime + 's');
-      } catch (e) { showToast(e.message, 'error'); }
-    };
-
-    const loadMeta = async () => {
-      try { nodeTypes.value = await api('/api/node-types'); }
-      catch (e) { /* 元数据加载失败不影响主流程 */ }
-      try { agentTools.value = await api('/api/agent-tools'); }
-      catch (e) { /* 保留默认工具清单 */ }
-      try {
-        const health = await api('/health');
-        schedulerJobs.value = (health.data && health.data.scheduler_jobs) || 0;
-      } catch (e) { /* 健康检查失败不提示 */ }
-    };
-
-    const copy = (text) => {
-      navigator.clipboard.writeText(text).then(
-        () => showToast('已复制到剪贴板'),
-        () => showToast('复制失败，请手动复制', 'error')
-      );
-    };
-
-    const pretty = (raw) => {
-      if (!raw) return '';
-      try { return JSON.stringify(JSON.parse(raw), null, 2); }
-      catch (e) { return raw; }
-    };
-
-    onMounted(async () => {
-      await loadMeta();
-      await loadWorkflows();
-      if (workflows.value.length) await selectWorkflow(workflows.value[0]);
-      // 定时感知定时任务 / Webhook 等外部触发产生的新运行记录。
-      watchTimer = setInterval(watchTick, WATCH_INTERVAL);
-    });
-
-    onUnmounted(() => {
-      stopPolling();
-      if (watchTimer) clearInterval(watchTimer);
-      watchTimer = null;
-    });
-
-    return {
-      workflows, current, nodes, runs, detail, nodeTypes, agentTools, schedulerJobs, runFilter,
-      toast, saving, running, loadingRuns, polling, webhookURL,
-      selectWorkflow, createWorkflow, save, remove, runNow, testWebhook,
-      addNode, onTypeChange, removeNode, moveUp, moveDown,
-      loadRuns, loadDetail, setFilter, refreshStatus, copy, pretty, isActiveRun
-    };
+        state.runFilter = state.current.id;
+        renderTabs();
+        return loadRuns(true).then(function () { return loadDetail(data.run_id, true); });
+      });
+    }).then(function () {
+      syncPolling();
+    }).catch(function (e) { showToast(e.message, 'error'); });
   }
-}).mount('#app');
+
+  function copyWebhook() {
+    var el = $('#webhookURL');
+    var text = el ? el.value : '';
+    if (!text) { showToast('请先保存工作流', 'error'); return; }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(
+        function () { showToast('已复制到剪贴板'); },
+        function () { showToast('复制失败，请手动复制', 'error'); }
+      );
+    } else {
+      el.select();
+      showToast('请按 Ctrl+C 复制');
+    }
+  }
+
+  function refreshStatus() {
+    api('/status').then(function (s) {
+      showToast('CPU ' + s.cpu.usage.toFixed(1) + '% · 内存 ' + s.memory.usage.toFixed(1) + '% · 运行 ' + s.uptime + 's');
+    }).catch(function (e) { showToast(e.message, 'error'); });
+  }
+
+  function loadMeta() {
+    api('/api/node-types').then(function (t) {
+      state.nodeTypes = t; renderTopbar();
+      renderNodes();
+    }).catch(function () { /* 元数据加载失败不影响主流程 */ });
+
+    api('/api/agent-tools').then(function (t) {
+      state.agentTools = t; renderNodes();
+    }).catch(function () { /* 保留默认工具清单 */ });
+
+    api('/health').then(function (h) {
+      state.schedulerJobs = (h.data && h.data.scheduler_jobs) || 0;
+      renderTopbar();
+    }).catch(function () { /* 健康检查失败不提示 */ });
+  }
+
+  // ---------- 事件绑定 ----------
+  // 工作流基本信息字段：输入即写回 state，不重渲染，避免输入框失焦。
+  document.addEventListener('input', function (e) {
+    var el = e.target;
+    if (!el || !el.getAttribute) return;
+
+    var wfKey = el.getAttribute('data-wf');
+    if (wfKey && state.current) {
+      state.current[wfKey] = readValue(el);
+      return;
+    }
+
+    var bind = el.getAttribute('data-bind');
+    if (bind) {
+      var wrap = el.closest('.node');
+      if (!wrap) return;
+      var n = state.nodes[Number(wrap.getAttribute('data-idx'))];
+      if (!n) return;
+      setPath(n, bind, readValue(el));
+    }
+  });
+
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    if (!el || !el.getAttribute) return;
+
+    var wfKey = el.getAttribute('data-wf');
+    if (wfKey && state.current) {
+      state.current[wfKey] = readValue(el);
+      return;
+    }
+
+    var bind = el.getAttribute('data-bind');
+    if (!bind) return;
+    var wrap = el.closest('.node');
+    if (!wrap) return;
+    var idx = Number(wrap.getAttribute('data-idx'));
+    var n = state.nodes[idx];
+    if (!n) return;
+
+    // 切换节点类型时重建默认配置并整体重绘节点区。
+    if (bind === 'type') {
+      n.config = defaultsFor(el.value);
+      renderNodes();
+      return;
+    }
+    setPath(n, bind, readValue(el));
+  });
+
+  // 统一处理所有按钮点击。
+  document.addEventListener('click', function (e) {
+    var el = e.target.closest('[data-act]');
+    if (!el) return;
+    var act = el.getAttribute('data-act');
+    var idx = Number(el.getAttribute('data-idx'));
+    var id = el.getAttribute('data-id');
+
+    switch (act) {
+      case 'selectWorkflow':
+        loadWorkflows().then(function () {});
+        api('/api/workflows/' + id).then(function (full) {
+          stopPolling();
+          lastRunID = 0;
+          state.current = full;
+          state.detail = null;
+          state.runFilter = full.id;
+          parseGraph();
+          renderSidebar();
+          renderContent();
+          return loadRuns();
+        }).catch(function (err) { showToast(err.message, 'error'); });
+        break;
+
+      case 'createWorkflow': createWorkflow(); break;
+      case 'save': save(); break;
+      case 'remove': remove(); break;
+      case 'runNow': runNow(); break;
+      case 'testWebhook': testWebhook(); break;
+      case 'copyWebhook': copyWebhook(); break;
+      case 'refreshStatus': refreshStatus(); break;
+
+      case 'addNode': addNode(); break;
+      case 'removeNode':
+        var removed = state.nodes[idx].id;
+        state.nodes.splice(idx, 1);
+        state.nodes.forEach(function (n) {
+          n.dependsOn = (n.dependsOn || []).filter(function (d) { return d !== removed; });
+        });
+        renderNodes();
+        break;
+      case 'moveUp':
+        if (idx > 0) state.nodes.splice(idx - 1, 0, state.nodes.splice(idx, 1)[0]);
+        renderNodes();
+        break;
+      case 'moveDown':
+        if (idx < state.nodes.length - 1) state.nodes.splice(idx + 1, 0, state.nodes.splice(idx, 1)[0]);
+        renderNodes();
+        break;
+
+      case 'refreshRuns': loadRuns(); break;
+      case 'setFilter': setFilter(Number(id)); break;
+      case 'loadDetail': loadDetail(Number(id)); break;
+      case 'closeDetail':
+        state.detail = null;
+        renderDetail();
+        syncPolling();
+        break;
+    }
+  });
+
+  // ---------- 启动 ----------
+  renderTopbar();
+  renderSidebar();
+  renderContent();
+
+  loadMeta().then(loadWorkflows).then(function () {
+    if (state.workflows.length) return selectWorkflow(state.workflows[0]);
+  }).catch(function () { /* 启动失败保持空态 */ });
+
+  // 定时感知定时任务 / Webhook 等外部触发产生的新运行记录。
+  watchTimer = setInterval(watchTick, WATCH_INTERVAL);
+})();
 </script>
 </body>
 </html>

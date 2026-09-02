@@ -4,12 +4,11 @@ package web
 import (
 	"embed"
 	"io/fs"
-	"net/http"
 )
 
-// content 内嵌的静态资源文件系统，包含页面与 Vue 运行时。
+// content 内嵌的静态资源文件系统，包含单页应用页面。
 //
-//go:embed index.html assets
+//go:embed index.html
 var content embed.FS
 
 // FS 返回内嵌资源的可读文件系统。
@@ -24,11 +23,4 @@ func Index() []byte {
 	return data
 }
 
-// AssetsHandler 返回 assets 目录下静态资源（如 Vue 运行时）的处理器。
-func AssetsHandler() http.Handler {
-	sub, err := fs.Sub(content, "assets")
-	if err != nil {
-		return http.NotFoundHandler()
-	}
-	return http.FileServer(http.FS(sub))
-}
+
