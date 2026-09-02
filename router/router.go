@@ -11,6 +11,7 @@ import (
 
 // NewRouter 创建并配置 HTTP 请求路由器，注册健康检查、API、Webhook 与 Web 控制台路由。
 func NewRouter(
+	version string,
 	workflowController *controller.WorkflowController,
 	runController *controller.RunController,
 	webhookController *controller.WebhookController,
@@ -19,7 +20,7 @@ func NewRouter(
 ) *http.ServeMux {
 	mux := http.NewServeMux()
 
-	// 健康检查，附加调度任务数量便于观测。
+	// 健康检查，附加调度任务数量与版本号便于观测。
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		jobs := 0
 		if sched != nil {
@@ -27,7 +28,7 @@ func NewRouter(
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok","message":"Service is running","data":{"scheduler_jobs":` +
+		w.Write([]byte(`{"status":"ok","message":"Service is running","version":"` + version + `","data":{"scheduler_jobs":` +
 			itoa(jobs) + `}}`))
 	})
 

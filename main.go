@@ -25,6 +25,27 @@ import (
 	"go.uber.org/zap"
 )
 
+var (
+	version   = "dev"
+	commit    = ""
+	buildTime = ""
+)
+
+func Version() string {
+	return version
+}
+
+func BuildInfo() string {
+	s := version
+	if commit != "" {
+		s += " (" + commit + ")"
+	}
+	if buildTime != "" {
+		s += " built at " + buildTime
+	}
+	return s
+}
+
 // shutdownTimeout 优雅退出时等待在途请求的最长时间。
 const shutdownTimeout = 10 * time.Second
 
@@ -64,7 +85,7 @@ func main() {
 	webhookController := controller.NewWebhookController(workflowService)
 	statusController := controller.NewStatusController(service.NewStatusService())
 
-	r := router.NewRouter(workflowController, runController, webhookController, statusController, sched)
+	r := router.NewRouter(version, workflowController, runController, webhookController, statusController, sched)
 
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", config.GetServerPort()),
@@ -75,6 +96,7 @@ func main() {
 	serverErr := make(chan error, 1)
 	go func() {
 		logger.Info("server starting",
+			zap.String("version", BuildInfo()),
 			zap.Int("port", config.GetServerPort()),
 			zap.String("console", fmt.Sprintf("http://localhost:%d", config.GetServerPort())),
 		)
