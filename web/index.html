@@ -92,6 +92,26 @@
   .wf-item .name { font-weight: 500; display: flex; align-items: center; gap: 8px; font-size: 13px; }
   .wf-item .meta { font-size: 12px; color: var(--muted); margin-top: 3px; padding-left: 14px; }
   .wf-item .meta .grp { color: var(--accent); }
+  .wf-item .name .wf-del {
+    margin-left: auto; width: 20px; height: 20px; line-height: 18px;
+    text-align: center; border-radius: 4px; color: var(--muted); font-size: 14px;
+    opacity: 0; transition: .12s; cursor: pointer; user-select: none;
+    border: 1px solid transparent;
+  }
+  .wf-item:hover .name .wf-del { opacity: 1; }
+  .wf-item .name .wf-del:hover { background: var(--danger-soft); color: var(--danger); border-color: #f3c6c6; }
+
+  .wf-group + .wf-group { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+  .wf-group-head {
+    padding: 4px 12px; font-size: 11px; font-weight: 600;
+    color: var(--muted); letter-spacing: .5px; text-transform: uppercase;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .wf-group-head .grp-dot { color: var(--accent); }
+  .wf-group-head .grp-count {
+    margin-left: auto; background: var(--code-bg); color: var(--muted);
+    padding: 0 6px; border-radius: 999px; font-size: 10.5px;
+  }
   .content { flex: 1; overflow-y: auto; padding: 22px 26px 60px; }
 
   /* ---------- 控件 ---------- */
@@ -925,25 +945,60 @@
     }).join('');
   }
 
-  // ---------- 渲染：工作流侧栏 ----------
+  // ---------- 渲染：工作流侧栏（按分组聚合 + 每项右侧 × 删除） ----------
   function renderSidebar() {
     var box = $('#wfList');
     if (!state.workflows.length) {
       box.innerHTML = '<div class="empty" style="padding:24px 8px;font-size:12px;">暂无工作流，点击下方示例一键创建</div>';
       return;
     }
-    box.innerHTML = state.workflows.map(function (wf) {
+
+    // 按分组聚合：有 group 的归入对应组，无 group 的统一归入「未分组」。
+    // 分组按名称排序；组内有自定义分组时把「demo」组放到最前以便快速识别示例。
+    var groupOrder = [];
+    var groupMap = {};
+    state.workflows.forEach(function (wf) {
+      var g = (wf.group && wf.group.trim()) || '未分组';
+      if (!groupMap[g]) { groupMap[g] = []; groupOrder.push(g); }
+      groupMap[g].push(wf);
+    });
+    groupOrder.sort(function (a, b) {
+      if (a === '未分组') return 1;
+      if (b === '未分组') return -1;
+      if (a === 'demo') return -1;
+      if (b === 'demo') return 1;
+      return a.localeCompare(b);
+    });
+
+    var renderItem = function (wf) {
       var nodeCount = 0;
       try { nodeCount = (JSON.parse(wf.graph || '{}').nodes || []).length; } catch (e) { nodeCount = 0; }
       var active = state.current && state.current.id === wf.id ? ' active' : '';
       var dotColor = wf.enabled ? 'var(--success)' : 'var(--muted)';
       return '<div class="wf-item' + active + '" data-act="selectWorkflow" data-id="' + wf.id + '">' +
-        '<div class="name"><span style="color:' + dotColor + '">●</span>' + esc(wf.name) + '</div>' +
+        '<div class="name">' +
+          '<span style="color:' + dotColor + '">●</span>' +
+          '<span class="wf-name-text" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(wf.name) + '</span>' +
+          // × 删除按钮：靠 stopPropagation 阻止冒泡，避免触发 selectWorkflow。
+          '<span class="wf-del" data-act="removeWorkflow" data-id="' + wf.id + '" title="删除该工作流">×</span>' +
+        '</div>' +
         '<div class="meta">' +
           (wf.cron ? '⏱ ' + esc(wf.cron) : '未设定时') +
           (wf.group ? ' <span class="grp">' + esc(wf.group) + '</span>' : '') +
           ' · ' + nodeCount + ' 节点' +
         '</div>' +
+      '</div>';
+    };
+
+    box.innerHTML = groupOrder.map(function (g) {
+      var items = groupMap[g];
+      return '<div class="wf-group">' +
+        '<div class="wf-group-head">' +
+          '<span class="grp-dot">●</span>' +
+          esc(g) +
+          '<span class="grp-count">' + items.length + '</span>' +
+        '</div>' +
+        items.map(renderItem).join('') +
       '</div>';
     }).join('');
   }
@@ -1585,6 +1640,26 @@
     }).catch(function (e) { showToast(e.message, 'error'); });
   }
 
+  // removeWorkflow 侧栏 × 触发的删除：先在本地找到工作流名用于确认弹窗，
+  // 删除后若命中当前选中的工作流，回到空态并重新刷新侧栏。
+  function removeWorkflow(id) {
+    var wf = state.workflows.find(function (w) { return w.id === id; });
+    var name = wf ? wf.name : ('#' + id);
+    if (!confirm('确认删除工作流「' + name + '」？此操作不可恢复')) return;
+    api('/api/workflows/' + id, { method: 'DELETE' }).then(function () {
+      var wasCurrent = state.current && state.current.id === id;
+      if (wasCurrent) {
+        stopPolling();
+        state.current = null; state.nodes = []; state.runs = []; state.detail = null;
+      }
+      return loadWorkflows().then(function () {
+        if (wasCurrent) renderContent();
+        renderSidebar();
+        showToast('已删除「' + name + '」');
+      });
+    }).catch(function (e) { showToast(e.message, 'error'); });
+  }
+
   function addNode() {
     nodeSeq++;
     var id = 'n' + nodeSeq;
@@ -1817,6 +1892,11 @@
       case 'createWorkflow': createWorkflow(); break;
       case 'save': save(); break;
       case 'remove': remove(); break;
+      case 'removeWorkflow':
+        // 阻止冒泡到外层 .wf-item，避免触发了 selectWorkflow 又弹删除确认。
+        e.stopPropagation(); e.preventDefault();
+        removeWorkflow(Number(id));
+        break;
       case 'runNow': runNow(); break;
       case 'testWebhook': testWebhook(); break;
       case 'copyWebhook': copyWebhook(); break;
