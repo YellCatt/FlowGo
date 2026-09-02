@@ -10,11 +10,20 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config 应用程序的根配置结构，聚合了服务、数据库和日志配置。
+// LLMConfig 大模型配置，为 ai_agent 节点提供默认值。
+type LLMConfig struct {
+	BaseURL string `yaml:"base_url"` // OpenAI 兼容接口地址
+	APIKey  string `yaml:"api_key"`  // 接口密钥
+	Model   string `yaml:"model"`    // 默认模型名
+	Timeout int    `yaml:"timeout"`  // 单次请求超时（秒）
+}
+
+// Config 应用程序的根配置结构，聚合了服务、数据库、日志和大模型配置。
 type Config struct {
 	Server   ServerConfig   `yaml:"server"`   // 服务端配置
 	Database DatabaseConfig `yaml:"database"` // 数据库配置
 	Log      LogConfig      `yaml:"log"`      // 日志配置
+	LLM      LLMConfig      `yaml:"llm"`      // 大模型配置（ai_agent 节点默认值）
 }
 
 // ServerConfig 服务端相关配置，包括监听端口。
@@ -71,6 +80,12 @@ func createDefaultConfig(path string) error {
 			Path:  "./logs",
 			Level: "info",
 		},
+		LLM: LLMConfig{
+			BaseURL: "https://api.openai.com/v1",
+			APIKey:  "",
+			Model:   "gpt-4o-mini",
+			Timeout: 60,
+		},
 	}
 
 	data, err := yaml.Marshal(&defaultCfg)
@@ -104,6 +119,18 @@ func GetLogPath() string {
 func GetLogLevel() string {
 	return cfg.Log.Level
 }
+
+// GetLLMBaseURL 返回大模型接口地址，节点未单独配置时使用。
+func GetLLMBaseURL() string { return cfg.LLM.BaseURL }
+
+// GetLLMAPIKey 返回大模型接口密钥，节点未单独配置时使用。
+func GetLLMAPIKey() string { return cfg.LLM.APIKey }
+
+// GetLLMModel 返回默认大模型名称，节点未单独配置时使用。
+func GetLLMModel() string { return cfg.LLM.Model }
+
+// GetLLMTimeout 返回大模型请求默认超时秒数，节点未单独配置时使用。
+func GetLLMTimeout() int { return cfg.LLM.Timeout }
 
 // InitDirectories 初始化所需的日志目录和数据库目录。
 func InitDirectories() error {

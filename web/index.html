@@ -208,7 +208,7 @@
       <section class="content">
         <div v-if="!current" class="empty">
           <div style="font-size:15px;margin-bottom:8px;">从左侧选择一个工作流，或新建一个</div>
-          <div style="font-size:12px;">支持 http / shell / delay 节点，可由 Webhook 或 Cron 触发</div>
+          <div style="font-size:12px;">支持 http / shell / delay 节点，可插入 ai_agent 节点让大模型在节点内分析并调用工具，可由 Webhook 或 Cron 触发</div>
         </div>
 
         <template v-else>
@@ -347,6 +347,65 @@
                 </div>
               </template>
 
+              <!-- ai_agent -->
+              <template v-else-if="n.type === 'ai_agent'">
+                <div class="row">
+                  <div class="field">
+                    <label>模型</label>
+                    <input type="text" class="mono" v-model="n.config.model" placeholder="gpt-4o-mini / qwen-plus" />
+                  </div>
+                  <div class="field">
+                    <label>接口地址（OpenAI 兼容）</label>
+                    <input type="text" class="mono" v-model="n.config.base_url" placeholder="https://api.openai.com/v1" />
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="field">
+                    <label>API Key（留空则使用 config.yaml 的 llm.api_key）</label>
+                    <input type="text" class="mono" v-model="n.config.api_key" placeholder="sk-xxx" />
+                  </div>
+                  <div class="field">
+                    <label>单次请求超时（秒）</label>
+                    <input type="number" v-model.number="n.config.timeout" />
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="field">
+                    <label>最大思考轮次（1-20）</label>
+                    <input type="number" v-model.number="n.config.max_iterations" />
+                  </div>
+                  <div class="field">
+                    <label>温度</label>
+                    <input type="number" step="0.1" v-model.number="n.config.temperature" />
+                  </div>
+                </div>
+                <div class="field">
+                  <label>系统提示词（任务指令，支持模板变量）</label>
+                  <textarea v-model="n.config.system_prompt"
+                            placeholder="分析上游 http 返回的数据，命中标记时调用 shell-run 输出日志，最后给出结论"></textarea>
+                </div>
+                <div class="field">
+                  <label>补充指令（可选）</label>
+                  <textarea v-model="n.config.user_prompt" placeholder="例如：只输出命中的 URL 列表，用 JSON 数组"></textarea>
+                </div>
+                <div class="field">
+                  <label>允许调用的工具（不选表示全部）</label>
+                  <select multiple size="3" v-model="n.config.tools" style="height:auto;">
+                    <option v-for="t in agentTools" :key="t" :value="t">{{ t }}</option>
+                  </select>
+                  <div class="hint">
+                    AI 只能在<strong>当前节点内部</strong>调用这些系统已注册的工具，不能新增/跳过节点、不能修改 DAG 结构；
+                    工具结果会回传给 AI 继续分析，节点结束后再把结论交给下游节点
+                  </div>
+                </div>
+                <div class="field">
+                  <div class="switch">
+                    <input type="checkbox" v-model="n.config.native_tools" />
+                    <span class="hint" style="margin:0;">使用原生 function calling（部分模型不支持时请关闭，走 JSON 文本协议）</span>
+                  </div>
+                </div>
+              </template>
+
               <div class="field" style="margin-top:10px;margin-bottom:0;">
                 <label>依赖的上游节点（可多选，用于确定执行顺序；留空则按列表顺序执行）</label>
                 <select multiple size="3" v-model="n.dependsOn" style="height:auto;">
@@ -359,7 +418,8 @@
 
             <div class="hint" style="margin-top:10px;">
               节点输出可用 <code>{{ '{{ .nodes.<节点ID>.字段 }}' }}</code> 在后续节点中引用，
-              例如 http 节点的 <code>{{ '{{ .nodes.n1.body }}' }}</code>、<code>{{ '{{ .nodes.n1.status_code }}' }}</code>
+              例如 http 节点的 <code>{{ '{{ .nodes.n1.body }}' }}</code>、<code>{{ '{{ .nodes.n1.status_code }}' }}</code>、
+              ai_agent 节点的 <code>{{ '{{ .nodes.n2.answer }}' }}</code>
               （省略前导点写成 <code>{{ '{{ nodes.n1.body }}' }}</code> 亦可）
             </div>
           </div>
@@ -450,7 +510,8 @@ createApp({
     const nodes = ref([]);
     const runs = ref([]);
     const detail = ref(null);
-    const nodeTypes = ref(['http', 'shell', 'delay']);
+    const nodeTypes = ref(['http', 'shell', 'delay', 'ai_agent']);
+    const agentTools = ref(['http-call', 'shell-run', 'delay-sleep']);
     const schedulerJobs = ref(0);
     const runFilter = ref(0);
     const toast = ref(null);
@@ -546,6 +607,10 @@ createApp({
     const defaultsFor = (type) => {
       if (type === 'http') return { method: 'GET', url: '', headers: {}, body: '', timeout: 30 };
       if (type === 'shell') return { command: '', workdir: '', timeout: 60 };
+      if (type === 'ai_agent') return {
+        system_prompt: '', user_prompt: '', model: '', base_url: '', api_key: '',
+        temperature: 0.2, max_iterations: 5, timeout: 60, tools: [], native_tools: false
+      };
       return { seconds: 1 };
     };
 
@@ -672,11 +737,14 @@ createApp({
     };
 
     const loadMeta = async () => {
+      try { nodeTypes.value = await api('/api/node-types'); }
+      catch (e) { /* 元数据加载失败不影响主流程 */ }
+      try { agentTools.value = await api('/api/agent-tools'); }
+      catch (e) { /* 保留默认工具清单 */ }
       try {
-        nodeTypes.value = await api('/api/node-types');
         const health = await api('/health');
         schedulerJobs.value = (health.data && health.data.scheduler_jobs) || 0;
-      } catch (e) { /* 元数据加载失败不影响主流程 */ }
+      } catch (e) { /* 健康检查失败不提示 */ }
     };
 
     const copy = (text) => {
@@ -699,7 +767,7 @@ createApp({
     });
 
     return {
-      workflows, current, nodes, runs, detail, nodeTypes, schedulerJobs, runFilter,
+      workflows, current, nodes, runs, detail, nodeTypes, agentTools, schedulerJobs, runFilter,
       toast, saving, running, loadingRuns, webhookURL,
       selectWorkflow, createWorkflow, save, remove, runNow, testWebhook,
       addNode, onTypeChange, removeNode, moveUp, moveDown,

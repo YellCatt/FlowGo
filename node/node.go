@@ -1,4 +1,5 @@
-// Package node 定义内置节点执行器：http、shell、delay。
+// Package node 定义内置节点执行器：http、shell、delay、ai_agent，
+// 并提供 ai_agent 节点内部可用的工具注册表。
 package node
 
 import (
@@ -11,15 +12,20 @@ import (
 
 // 内置节点类型常量。
 const (
-	TypeHTTP  = "http"
-	TypeShell = "shell"
-	TypeDelay = "delay"
+	TypeHTTP    = "http"
+	TypeShell   = "shell"
+	TypeDelay   = "delay"
+	TypeAIAgent = "ai_agent"
 )
 
 // Context 节点执行上下文，提供变量渲染能力。
 type Context struct {
 	// Vars 模板变量，结构为 {trigger: any, nodes: map[string]any}。
 	Vars map[string]any
+	// NodeID 当前节点 ID。
+	NodeID string
+	// Upstream 直接上游节点 ID 列表，由引擎根据连线计算；为空表示无上游。
+	Upstream []string
 }
 
 // Executor 节点执行器接口，每种节点类型实现一次并注册。
@@ -28,6 +34,12 @@ type Executor interface {
 	Type() string
 	// Run 执行节点，返回可被引用的输出变量。
 	Run(ctx context.Context, cfg map[string]any, ec *Context) (map[string]any, error)
+}
+
+// ConfigMasker 可选接口：节点声明写入执行日志前需要脱敏的配置字段。
+type ConfigMasker interface {
+	// MaskedFields 返回需要脱敏的配置字段名，例如 api_key。
+	MaskedFields() []string
 }
 
 var (

@@ -28,6 +28,7 @@ type WorkflowService interface {
 	Trigger(ctx context.Context, id uint, trigger, payload string) (*model.Run, error)
 	TriggerByWebhook(ctx context.Context, key, payload string) (*model.Run, error)
 	NodeTypes() []string
+	AgentTools() []string
 }
 
 // workflowService WorkflowService 的默认实现。
@@ -126,6 +127,9 @@ func (s *workflowService) TriggerByWebhook(ctx context.Context, key, payload str
 // NodeTypes 返回支持的节点类型列表。
 func (s *workflowService) NodeTypes() []string { return node.Types() }
 
+// AgentTools 返回 ai_agent 节点内部可调用的工具名称列表。
+func (s *workflowService) AgentTools() []string { return node.ToolNames() }
+
 // validate 校验工作流名称与图结构的合法性。
 func (s *workflowService) validate(wf *model.Workflow) error {
 	wf.Name = strings.TrimSpace(wf.Name)
@@ -158,6 +162,12 @@ func (s *workflowService) validate(wf *model.Workflow) error {
 		}
 		if n.Name == "" {
 			n.Name = n.Type
+		}
+
+		if n.Type == node.TypeAIAgent {
+			if err := node.ValidateAgentTools(n.Config); err != nil {
+				return fmt.Errorf("node %q: %w", n.ID, err)
+			}
 		}
 	}
 	for _, e := range graph.Edges {

@@ -7,3 +7,10 @@ database:
 log:
   path: ./logs
   level: info
+
+# ai_agent 节点的默认值，节点配置中单独填写的字段优先级更高
+llm:
+  base_url: https://api.openai.com/v1
+  api_key: ""
+  model: gpt-4o-mini
+  timeout: 60

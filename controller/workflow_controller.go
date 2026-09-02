@@ -119,6 +119,11 @@ func (c *WorkflowController) NodeTypes(w http.ResponseWriter, r *http.Request) {
 	writeOK(w, c.service.NodeTypes())
 }
 
+// AgentTools 处理 GET /api/agent-tools，返回 ai_agent 节点内部可调用的工具名称。
+func (c *WorkflowController) AgentTools(w http.ResponseWriter, r *http.Request) {
+	writeOK(w, c.service.AgentTools())
+}
+
 // reloadScheduler 工作流变更后刷新定时任务，失败仅记录日志不影响主流程。
 func (c *WorkflowController) reloadScheduler() {
 	if c.scheduler == nil {

@@ -18,6 +18,9 @@ import (
 // maxRunDuration 单次运行的最长持续时间，超时后整体中止。
 const maxRunDuration = 30 * time.Minute
 
+// maskedValue 写入执行日志时替换敏感配置的占位符。
+const maskedValue = "***"
+
 // Engine 工作流执行引擎。
 type Engine struct {
 	runs repository.RunRepository
@@ -71,6 +74,12 @@ func (e *Engine) Execute(ctx context.Context, wf *model.Workflow, trigger, paylo
 		nodeByID[graph.Nodes[i].ID] = &graph.Nodes[i]
 	}
 
+	// 直接上游节点，供需要读取前置产出的节点（如 ai_agent）使用。
+	preds := map[string][]string{}
+	for _, e := range graph.Edges {
+		preds[e.Target] = append(preds[e.Target], e.Source)
+	}
+
 	vars := map[string]any{
 		"trigger": decodePayload(payload),
 		"nodes":   map[string]any{},
@@ -116,7 +125,7 @@ func (e *Engine) Execute(ctx context.Context, wf *model.Workflow, trigger, paylo
 			NodeName:  def.Name,
 			NodeType:  def.Type,
 			Status:    model.RunStatusRunning,
-			Input:     mustJSON(rendered),
+			Input:     mustJSON(maskConfig(rendered, executor)),
 			StartedAt: started,
 		}
 		if err := e.runs.CreateStep(step); err != nil {
@@ -124,7 +133,11 @@ func (e *Engine) Execute(ctx context.Context, wf *model.Workflow, trigger, paylo
 		}
 
 		execStart := time.Now()
-		out, execErr := executor.Run(ctx, rendered, &node.Context{Vars: vars})
+		out, execErr := executor.Run(ctx, rendered, &node.Context{
+			Vars:     vars,
+			NodeID:   def.ID,
+			Upstream: preds[def.ID],
+		})
 		finished := model.Now()
 
 		step.FinishedAt = finished
@@ -272,6 +285,28 @@ func topoSort(g *model.Graph) ([]string, error) {
 			len(ids)-len(order), len(ids))
 	}
 	return order, nil
+}
+
+// maskConfig 按节点声明脱敏配置字段（如 api_key），避免密钥写入执行日志。
+func maskConfig(cfg map[string]any, executor node.Executor) map[string]any {
+	masker, ok := executor.(node.ConfigMasker)
+	if !ok || len(cfg) == 0 {
+		return cfg
+	}
+	fields := masker.MaskedFields()
+	if len(fields) == 0 {
+		return cfg
+	}
+	out := make(map[string]any, len(cfg))
+	for k, v := range cfg {
+		out[k] = v
+	}
+	for _, f := range fields {
+		if s, ok := out[f].(string); ok && s != "" {
+			out[f] = maskedValue
+		}
+	}
+	return out
 }
 
 // mustJSON 序列化配置或输出用于日志存储，失败时退化为字符串形式。

@@ -42,8 +42,9 @@ func NewRouter(
 	mux.HandleFunc("DELETE /api/workflows/{id}", workflowController.Delete)
 	mux.HandleFunc("POST /api/workflows/{id}/run", workflowController.Run)
 
-	// 内置节点类型。
+	// 内置节点类型与 ai_agent 可调用的工具清单。
 	mux.HandleFunc("GET /api/node-types", workflowController.NodeTypes)
+	mux.HandleFunc("GET /api/agent-tools", workflowController.AgentTools)
 
 	// 运行记录与执行日志。
 	mux.HandleFunc("GET /api/runs", runController.List)

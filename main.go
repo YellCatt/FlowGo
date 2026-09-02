@@ -21,7 +21,7 @@ import (
 	"github.com/example/flowgo/scheduler"
 	"github.com/example/flowgo/service"
 
-	_ "github.com/example/flowgo/node" // 注册内置节点：http / shell / delay
+	_ "github.com/example/flowgo/node" // 注册内置节点：http / shell / delay / ai_agent
 	"go.uber.org/zap"
 )
 
