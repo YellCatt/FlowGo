@@ -6,97 +6,133 @@
 <title>FlowGo · 工作流编排</title>
 <style>
   :root {
-    --bg: #0f1420;
-    --panel: #171d2b;
-    --panel-2: #1e2637;
-    --border: #2a3448;
-    --text: #e6ebf5;
-    --muted: #8b98b0;
-    --accent: #4f8cff;
-    --accent-soft: rgba(79, 140, 255, 0.14);
-    --success: #2ecc8f;
-    --danger: #ff5c5c;
-    --warn: #ffb020;
+    --bg: #f5f7fb;
+    --panel: #ffffff;
+    --panel-2: #ffffff;
+    --border: #e5e9f2;
+    --border-strong: #d6dde9;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --placeholder: #9ca3af;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --accent-soft: #eaf1ff;
+    --accent-soft-2: #f3f6ff;
+    --success: #16a34a;
+    --success-soft: #e8f7ee;
+    --danger: #dc2626;
+    --danger-soft: #fdecec;
+    --warn: #d97706;
+    --warn-soft: #fdf3e3;
+    --code-bg: #f1f4fa;
+    --shadow-card: 0 1px 2px rgba(15, 23, 42, .04), 0 1px 1px rgba(15, 23, 42, .03);
     --radius: 10px;
+    --radius-sm: 6px;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; height: 100%; }
   body {
     background: var(--bg);
     color: var(--text);
-    font: 14px/1.5 "Segoe UI", -apple-system, BlinkMacSystemFont, "Microsoft YaHei", sans-serif;
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
   #app { height: 100%; }
   button, input, select, textarea {
     font-family: inherit; font-size: 13px; color: var(--text);
   }
+  input::placeholder, textarea::placeholder { color: var(--placeholder); }
   button { cursor: pointer; }
 
   /* ---------- 布局 ---------- */
   .layout { display: flex; flex-direction: column; height: 100%; }
   .topbar {
     display: flex; align-items: center; gap: 14px;
-    padding: 0 20px; height: 56px; flex: 0 0 56px;
+    padding: 0 22px; height: 56px; flex: 0 0 56px;
     background: var(--panel); border-bottom: 1px solid var(--border);
   }
-  .logo { font-size: 17px; font-weight: 600; letter-spacing: .5px; }
+  .logo { font-size: 17px; font-weight: 600; letter-spacing: .5px; color: var(--text); }
   .logo span { color: var(--accent); }
   .topbar .spacer { flex: 1; }
   .badge {
-    padding: 3px 9px; border-radius: 20px; font-size: 12px;
-    background: var(--panel-2); color: var(--muted); border: 1px solid var(--border);
+    padding: 4px 10px; border-radius: 999px; font-size: 12px;
+    background: var(--code-bg); color: var(--muted); border: 1px solid var(--border);
   }
+  .badge.accent { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
   .main { flex: 1; display: flex; min-height: 0; }
   .sidebar {
-    width: 260px; flex: 0 0 260px; background: var(--panel);
+    width: 280px; flex: 0 0 280px; background: var(--panel);
     border-right: 1px solid var(--border); display: flex; flex-direction: column;
   }
   .sidebar-head {
-    padding: 12px 14px; border-bottom: 1px solid var(--border);
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
     display: flex; align-items: center; justify-content: space-between;
   }
   .sidebar-head h3 { margin: 0; font-size: 13px; color: var(--muted); font-weight: 600; letter-spacing: .4px; }
-  .wf-list { overflow-y: auto; flex: 1; padding: 8px; }
-  .wf-item {
-    padding: 10px 12px; border-radius: var(--radius); margin-bottom: 6px;
-    cursor: pointer; border: 1px solid transparent; transition: .15s;
+  .sidebar-section { padding: 12px 12px 4px; }
+  .sidebar-section + .sidebar-section { border-top: 1px solid var(--border); padding-top: 12px; }
+  .sidebar-section h4 {
+    margin: 0 4px 8px; font-size: 11px; color: var(--muted);
+    font-weight: 600; letter-spacing: .6px; text-transform: uppercase;
+    display: flex; align-items: center; gap: 6px;
   }
-  .wf-item:hover { background: var(--panel-2); }
-  .wf-item.active { background: var(--accent-soft); border-color: var(--accent); }
-  .wf-item .name { font-weight: 500; display: flex; align-items: center; gap: 8px; }
-  .wf-item .meta { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .sidebar-section h4 .count {
+    margin-left: auto; background: var(--code-bg); color: var(--muted);
+    padding: 1px 6px; border-radius: 999px; font-size: 11px; font-weight: 500;
+  }
+  .wf-list { overflow-y: auto; flex: 1; padding: 4px 8px 8px; }
+  .wf-item {
+    padding: 9px 11px; border-radius: var(--radius-sm); margin-bottom: 4px;
+    cursor: pointer; border: 1px solid transparent; transition: .12s;
+    background: transparent;
+  }
+  .wf-item:hover { background: var(--accent-soft-2); }
+  .wf-item.active { background: var(--accent-soft); border-color: #c7d8ff; }
+  .wf-item.active .name { color: var(--accent); }
+  .wf-item .name { font-weight: 500; display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .wf-item .meta { font-size: 12px; color: var(--muted); margin-top: 3px; padding-left: 14px; }
   .wf-item .meta .grp { color: var(--accent); }
-  .content { flex: 1; overflow-y: auto; padding: 20px 24px 60px; }
+  .content { flex: 1; overflow-y: auto; padding: 22px 26px 60px; }
 
   /* ---------- 控件 ---------- */
   .btn {
-    padding: 7px 14px; border-radius: 8px; border: 1px solid var(--border);
-    background: var(--panel-2); transition: .15s;
+    padding: 7px 14px; border-radius: 8px; border: 1px solid var(--border-strong);
+    background: #fff; color: var(--text); transition: .15s;
   }
-  .btn:hover { border-color: var(--accent); }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500; }
-  .btn.primary:hover { filter: brightness(1.1); }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.primary {
+    background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500;
+  }
+  .btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: #fff; }
   .btn.danger:hover { border-color: var(--danger); color: var(--danger); }
-  .btn.small { padding: 4px 10px; font-size: 12px; }
+  .btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+  .btn.ghost:hover { background: var(--accent-soft-2); color: var(--text); border-color: transparent; }
+  .btn.small { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
   .btn:disabled { opacity: .5; cursor: not-allowed; }
 
   .card {
     background: var(--panel); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 16px 18px; margin-bottom: 16px;
+    border-radius: var(--radius); padding: 18px 20px; margin-bottom: 16px;
+    box-shadow: var(--shadow-card);
   }
   .card-title {
     font-size: 13px; font-weight: 600; color: var(--muted);
     letter-spacing: .5px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px;
+    text-transform: uppercase;
   }
   .card-title .spacer { flex: 1; }
+  .card-title .actions { display: flex; gap: 6px; }
 
   .field { margin-bottom: 12px; }
-  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; font-weight: 500; }
   .field input[type=text], .field input[type=number], .field select, .field textarea {
     width: 100%; padding: 8px 10px; border-radius: 8px;
-    background: var(--panel-2); border: 1px solid var(--border); outline: none;
+    background: #fff; border: 1px solid var(--border-strong); outline: none;
+    color: var(--text); transition: .15s;
   }
-  .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--accent); }
+  .field input:focus, .field select:focus, .field textarea:focus {
+    border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+  }
   .field textarea { resize: vertical; min-height: 72px; font-family: Consolas, Menlo, monospace; font-size: 12.5px; }
   .row { display: flex; gap: 12px; }
   .row > * { flex: 1; }
@@ -104,12 +140,15 @@
   .switch input { width: auto; }
 
   .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
-  .hint code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; color: var(--accent); }
+  .hint code, code.inline {
+    background: var(--code-bg); padding: 1px 6px; border-radius: 4px;
+    color: var(--accent); font-size: 12px;
+  }
 
   /* ---------- 节点 ---------- */
   .node {
-    background: var(--panel-2); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 12px 14px; margin-bottom: 10px;
+    background: #fcfdff; border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px 16px; margin-bottom: 10px;
   }
   .node-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
   .node-idx {
@@ -120,49 +159,192 @@
   .node-head .spacer { flex: 1; }
   .type-tag {
     font-size: 11px; padding: 2px 8px; border-radius: 4px;
-    background: rgba(255,255,255,.06); color: var(--muted); text-transform: uppercase; letter-spacing: .5px;
+    background: var(--code-bg); color: var(--muted); text-transform: uppercase; letter-spacing: .5px; font-weight: 500;
   }
 
   /* ---------- 运行记录 ---------- */
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); }
-  th { color: var(--muted); font-weight: 500; font-size: 12px; }
-  tbody tr:hover { background: var(--panel-2); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; background: #fafbfd; }
+  tbody tr:hover { background: var(--accent-soft-2); }
   tbody tr.clickable { cursor: pointer; }
   .status {
     padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 500;
+    display: inline-block;
   }
-  .status.success { background: rgba(46,204,143,.15); color: var(--success); }
-  .status.failed  { background: rgba(255,92,92,.15);  color: var(--danger); }
-  .status.running { background: rgba(255,176,32,.15); color: var(--warn); }
-  .status.pending { background: rgba(139,152,176,.15); color: var(--muted); }
+  .status.success { background: var(--success-soft); color: var(--success); }
+  .status.failed  { background: var(--danger-soft);  color: var(--danger); }
+  .status.running { background: var(--warn-soft); color: var(--warn); }
+  .status.pending { background: var(--code-bg); color: var(--muted); }
 
-  .log-item { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; background: var(--panel-2); }
+  .log-item { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin-bottom: 8px; background: #fcfdff; }
   .log-head { display: flex; align-items: center; gap: 10px; }
   .log-head .spacer { flex: 1; }
   pre {
-    margin: 8px 0 0; padding: 10px; border-radius: 6px; background: #0b0f18;
+    margin: 8px 0 0; padding: 10px; border-radius: 6px; background: #f7f8fc;
     border: 1px solid var(--border); overflow-x: auto;
-    font-family: Consolas, Menlo, monospace; font-size: 12px; color: #b9c6dd;
+    font-family: Consolas, Menlo, monospace; font-size: 12px; color: #475569;
     white-space: pre-wrap; word-break: break-all; max-height: 260px; overflow-y: auto;
   }
   .empty { text-align: center; padding: 40px 0; color: var(--muted); }
   .toast {
     position: fixed; right: 20px; bottom: 20px; padding: 10px 16px; border-radius: 8px;
-    background: var(--panel-2); border: 1px solid var(--border); z-index: 99;
-    box-shadow: 0 8px 24px rgba(0,0,0,.35);
+    background: #fff; border: 1px solid var(--border-strong); z-index: 99;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, .12);
+    font-size: 13px;
   }
-  .toast.error { border-color: var(--danger); color: var(--danger); }
-  .toast.success { border-color: var(--success); color: var(--success); }
+  .toast.error { border-color: var(--danger); color: var(--danger); background: #fff5f5; }
+  .toast.success { border-color: var(--success); color: var(--success); background: #f4fbf6; }
   .tabs { display: flex; gap: 6px; margin-bottom: 14px; }
   .tab {
-    padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border);
-    background: transparent; color: var(--muted);
+    padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border-strong);
+    background: #fff; color: var(--muted);
   }
-  .tab.active { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+  .tab:hover { color: var(--text); border-color: var(--accent); }
+  .tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
   .kv { display: flex; gap: 20px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
   .kv b { color: var(--text); font-weight: 500; }
   .mono { font-family: Consolas, Menlo, monospace; }
+
+  /* ---------- Demo 卡片 ---------- */
+  .demo-card {
+    background: linear-gradient(180deg, #fafcff 0%, #f5f8ff 100%);
+    border: 1px dashed #c7d8ff; border-radius: var(--radius);
+    padding: 16px 18px; margin-bottom: 18px;
+  }
+  .demo-card-title {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 13px; font-weight: 600; color: var(--accent);
+    letter-spacing: .4px; margin-bottom: 12px;
+  }
+  .demo-card-title .tag {
+    background: var(--accent); color: #fff; font-size: 11px;
+    padding: 2px 8px; border-radius: 4px; letter-spacing: .5px;
+  }
+  .demo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+  .demo-card-item {
+    background: #fff; border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px; cursor: pointer; transition: .15s;
+    display: flex; flex-direction: column; gap: 6px; text-align: left;
+  }
+  .demo-card-item:hover {
+    border-color: var(--accent); box-shadow: 0 4px 12px rgba(37, 99, 235, .12);
+    transform: translateY(-1px);
+  }
+  .demo-card-item .demo-name { font-weight: 600; color: var(--text); font-size: 13.5px; display: flex; align-items: center; gap: 8px; }
+  .demo-card-item .demo-desc { color: var(--muted); font-size: 12px; line-height: 1.55; flex: 1; }
+  .demo-card-item .demo-flow { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+  .demo-card-item .flow-tag {
+    font-size: 11px; padding: 2px 7px; border-radius: 4px;
+    background: var(--code-bg); color: var(--muted); font-family: Consolas, Menlo, monospace;
+  }
+
+  .demo-group + .demo-group { margin-top: 18px; padding-top: 16px; border-top: 1px dashed #d9e3f7; }
+  .demo-group-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+  .demo-group-name { font-size: 13px; font-weight: 600; color: var(--text); }
+  .demo-group-desc { font-size: 12px; color: var(--muted); }
+  .demo-tip {
+    font-size: 11.5px; color: var(--accent); background: var(--accent-soft);
+    border-radius: 5px; padding: 5px 8px; line-height: 1.5;
+  }
+
+  /* ---------- 编辑 / 运行 标签页 ---------- */
+  .content-tabs {
+    display: flex; gap: 4px; margin-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .content-tab {
+    padding: 9px 18px; border: none; background: transparent; color: var(--muted);
+    font-size: 13px; font-weight: 500; border-radius: 0;
+    border-bottom: 2px solid transparent; margin-bottom: -1px; transition: .15s;
+  }
+  .content-tab:hover { color: var(--text); }
+  .content-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .content-tab .tab-badge {
+    display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 999px;
+    background: var(--code-bg); color: var(--muted); font-size: 11px;
+  }
+  .content-tab.active .tab-badge { background: var(--accent-soft); color: var(--accent); }
+
+  /* ---------- 运行页：左列表 + 右详情 ---------- */
+  .runs-layout { display: flex; gap: 16px; align-items: flex-start; }
+  .runs-side {
+    width: 320px; flex: 0 0 320px; background: var(--panel);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow-card); overflow: hidden;
+    position: sticky; top: 0; max-height: calc(100vh - 130px); display: flex; flex-direction: column;
+  }
+  .runs-side-head {
+    padding: 12px 14px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .runs-side-head .title { font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .5px; }
+  .runs-side-head .spacer { flex: 1; }
+  .run-list { overflow-y: auto; flex: 1; padding: 6px; }
+  .run-item {
+    padding: 10px 12px; border-radius: var(--radius-sm); margin-bottom: 4px;
+    cursor: pointer; border: 1px solid transparent; transition: .12s; background: transparent;
+  }
+  .run-item:hover { background: var(--accent-soft-2); }
+  .run-item.active { background: var(--accent-soft); border-color: #c7d8ff; }
+  .run-item .r1 { display: flex; align-items: center; gap: 8px; }
+  .run-item .rid { font-weight: 600; font-size: 13px; }
+  .run-item .r1 .spacer { flex: 1; }
+  .run-item .r2 {
+    font-size: 11.5px; color: var(--muted); margin-top: 4px;
+    display: flex; gap: 10px; flex-wrap: wrap;
+  }
+  .run-item .rerr {
+    font-size: 11.5px; color: var(--danger); margin-top: 4px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .runs-main { flex: 1; min-width: 0; }
+
+  /* ---------- 步骤详情 ---------- */
+  .step {
+    background: #fcfdff; border: 1px solid var(--border);
+    border-radius: var(--radius); margin-bottom: 10px; overflow: hidden;
+  }
+  .step.failed { border-color: #f3c6c6; background: #fffafa; }
+  .step-head {
+    display: flex; align-items: center; gap: 10px; padding: 11px 14px; cursor: pointer;
+  }
+  .step-head:hover { background: var(--accent-soft-2); }
+  .step-head .sname { font-weight: 500; }
+  .step-head .spacer { flex: 1; }
+  .step-head .arrow { color: var(--muted); font-size: 11px; transition: .15s; }
+  .step.collapsed .arrow { transform: rotate(-90deg); }
+  .step.collapsed .step-body { display: none; }
+  .step-body { padding: 0 14px 14px; }
+  .step-body .sec-label {
+    font-size: 11px; font-weight: 600; color: var(--muted);
+    letter-spacing: .5px; margin: 8px 0 4px; text-transform: uppercase;
+  }
+  .step-body pre { margin-top: 0; }
+  .step-body pre.err { color: var(--danger); background: #fff5f5; border-color: #f3c6c6; }
+  .step-empty { font-size: 12px; color: var(--muted); padding: 4px 0; }
+
+  .sidebar-group { display: flex; flex-direction: column; gap: 4px; }
+  .demo-cat + .demo-cat { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .demo-cat-name {
+    font-size: 11px; font-weight: 600; color: var(--accent);
+    letter-spacing: .5px; margin: 0 4px 6px;
+  }
+  .sidebar-demo-item {
+    padding: 9px 11px; border-radius: var(--radius-sm);
+    cursor: pointer; border: 1px solid transparent; transition: .12s;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .sidebar-demo-item:hover { background: var(--accent-soft-2); border-color: #dbe5fb; }
+  .sidebar-demo-item .icon {
+    width: 22px; height: 22px; border-radius: 5px;
+    background: var(--accent-soft); color: var(--accent);
+    display: flex; align-items: center; justify-content: center; font-size: 12px;
+  }
+  .sidebar-demo-item .body { flex: 1; min-width: 0; }
+  .sidebar-demo-item .dname { font-size: 13px; font-weight: 500; color: var(--text); }
+  .sidebar-demo-item .ddesc { font-size: 11.5px; color: var(--muted); margin-top: 2px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -179,11 +361,18 @@
 
     <div class="main">
       <aside class="sidebar">
-        <div class="sidebar-head">
-          <h3>工作流</h3>
-          <button class="btn small primary" data-act="createWorkflow">+ 新建</button>
+        <div class="sidebar-section">
+          <div class="sidebar-head" style="border:none;padding:0 4px 10px;">
+            <h3>工作流</h3>
+            <button class="btn small primary" data-act="createWorkflow">+ 新建</button>
+          </div>
+          <div class="wf-list" id="wfList"></div>
         </div>
-        <div class="wf-list" id="wfList"></div>
+
+        <div class="sidebar-section">
+          <h4>示例 / Demos <span class="count" id="demoCount">0</span></h4>
+          <div class="sidebar-group" id="demoSidebar"></div>
+        </div>
       </aside>
 
       <section class="content" id="content"></section>
@@ -204,6 +393,426 @@
 
   var $ = function (sel, root) { return (root || document).querySelector(sel); };
 
+  // DEMO_GROUP 内置示例工作流统一使用的分组，便于与正式工作流区分。
+  var DEMO_GROUP = 'demo';
+
+  // DEMO_CATEGORIES 示例分类，侧边栏与主区域按此分块展示。
+  var DEMO_CATEGORIES = [
+    { id: 'basic', name: '入门示例', desc: 'HTTP / Shell / Delay / Cron / Webhook 基础编排' },
+    { id: 'ai', name: 'AI 工作流', desc: '用 ai_agent 节点让大模型分析数据并调用工具' }
+  ];
+
+  // 内置示例：点击即可一键创建成新工作流，所有示例统一归入 demo 分组。
+  // 每个示例的 build() 返回一份完整的工作流草稿（含 graph），直接提交给后端。
+  var DEMOS = [
+    // ================= 入门示例 =================
+    {
+      id: 'demo-http-github',
+      category: 'basic',
+      name: 'HTTP 调用公开 API',
+      description: 'GET 一个公开接口，拿到 JSON 响应',
+      tip: '认识 http 节点：输出 status_code / body，可在运行详情里查看',
+      flow: ['http'],
+      build: function () { return {
+        name: '示例：HTTP 调用公开 API',
+        description: '最简工作流：一个 http 节点调用 GitHub 公开接口，拉取仓库信息。适合作为第一个上手示例。',
+        cron: '',
+        group: DEMO_GROUP,
+        enabled: false,
+        graph: {
+          nodes: [
+            { id: 'n1', type: 'http', name: '拉取 GitHub 仓库',
+              config: {
+                method: 'GET',
+                url: 'https://api.github.com/repos/golang/go',
+                headers: { 'User-Agent': 'flowgo-demo' },
+                body: '',
+                timeout: 15
+              }
+            }
+          ],
+          edges: []
+        }
+      }; }
+    },
+    {
+      id: 'demo-http-shell-pipe',
+      category: 'basic',
+      name: '取数据 → 写本地文件',
+      description: 'HTTP 拿数据，交给 Shell 落盘',
+      tip: '核心：用 {{ .nodes.n1.body }} 把上游输出传给下游节点',
+      flow: ['http', 'shell'],
+      build: function () { return {
+        name: '示例：取数据并落盘',
+        description: '演示节点间数据传递：http 节点拿回公网 IP，shell 节点通过 {{ .nodes.n1.body }} 引用并写入本地日志文件。',
+        cron: '',
+        group: DEMO_GROUP,
+        enabled: false,
+        graph: {
+          nodes: [
+            { id: 'n1', type: 'http', name: '查询公网 IP',
+              config: {
+                method: 'GET',
+                url: 'https://api.ipify.org?format=json',
+                headers: {},
+                body: '',
+                timeout: 10
+              }
+            },
+            { id: 'n2', type: 'shell', name: '把结果写入日志',
+              dependsOn: ['n1'],
+              config: {
+                command: 'echo "{{ .nodes.n1.body }}" >> flowgo-ip.log && cat flowgo-ip.log',
+                workdir: '',
+                timeout: 10
+              }
+            }
+          ],
+          edges: [{ source: 'n1', target: 'n2' }]
+        }
+      }; }
+    },
+    {
+      id: 'demo-serial-pipeline',
+      category: 'basic',
+      name: '三步串行流水线',
+      description: 'HTTP → 等待 → HTTP，演示执行顺序',
+      tip: 'delay 节点 + 依赖连线，理解 DAG 是怎么串起来的',
+      flow: ['http', 'delay', 'http'],
+      build: function () { return {
+        name: '示例：三步串行流水线',
+        description: '三个节点依次执行：先取一个 UUID，等待 2 秒，再把它 POST 出去。演示 delay 节点与依赖连线的用法。',
+        cron: '',
+        group: DEMO_GROUP,
+        enabled: false,
+        graph: {
+          nodes: [
+            { id: 'n1', type: 'http', name: '取一个 UUID',
+              config: {
+                method: 'GET',
+                url: 'https://httpbin.org/uuid',
+                headers: {},
+                body: '',
+                timeout: 10
+              }
+            },
+            { id: 'n2', type: 'delay', name: '等待 2 秒',
+              dependsOn: ['n1'],
+              config: { seconds: 2 }
+            },
+            { id: 'n3', type: 'http', name: '把 UUID 回传出去',
+              dependsOn: ['n2'],
+              config: {
+                method: 'POST',
+                url: 'https://httpbin.org/post',
+                headers: { 'Content-Type': 'application/json' },
+                body: '{{ .nodes.n1.body }}',
+                timeout: 15
+              }
+            }
+          ],
+          edges: [
+            { source: 'n1', target: 'n2' },
+            { source: 'n2', target: 'n3' }
+          ]
+        }
+      }; }
+    },
+    {
+      id: 'demo-cron-heartbeat',
+      category: 'basic',
+      name: '定时心跳巡检',
+      description: '每分钟自动打一次目标接口',
+      tip: 'Cron 定时触发：填 cron 表达式并启用后，调度器会自动跑',
+      flow: ['cron', 'http'],
+      build: function () { return {
+        name: '示例：每分钟心跳巡检',
+        description: '演示定时触发：cron 填 @every 1m，每分钟请求一次接口。启用后可在运行记录里看到持续产生的执行日志。',
+        cron: '@every 1m',
+        group: DEMO_GROUP,
+        enabled: false,
+        graph: {
+          nodes: [
+            { id: 'n1', type: 'http', name: '心跳请求',
+              config: {
+                method: 'GET',
+                url: 'https://httpbin.org/status/200',
+                headers: {},
+                body: '',
+                timeout: 10
+              }
+            }
+          ],
+          edges: []
+        }
+      }; }
+    },
+    {
+      id: 'demo-webhook-echo',
+      category: 'basic',
+      name: 'Webhook 被动触发',
+      description: '外部 POST 一个地址就触发流程',
+      tip: '用 {{ .trigger.xxx }} 读取外部系统传进来的字段',
+      flow: ['webhook', 'shell'],
+      build: function () { return {
+        name: '示例：Webhook 被动触发',
+        description: '演示外部触发：复制 Webhook 地址让第三方系统 POST，请求体会作为 {{ .trigger }} 注入节点，本例把它追加写入日志文件。',
+        cron: '',
+        group: DEMO_GROUP,
+        enabled: true,
+        graph: {
+          nodes: [
+            { id: 'n1', type: 'shell', name: '回显 payload',
+              config: {
+                command: 'echo "{{ .trigger }}" >> webhook-echo.log',
+                workdir: '',
+                timeout: 10
+              }
+            }
+          ],
+          edges: []
+        }
+      }; }
+    },
+
+    // ================= AI 工作流 =================
+    // 提示：ai_agent 节点需要 api_key，节点留空时回落到 config/config.yaml 的 llm.api_key。
+    {
+      id: 'demo-ai-summarize',
+      category: 'ai',
+      name: '① AI 摘要上游数据',
+      description: 'HTTP 抓内容 → AI 提炼要点',
+      tip: '最简 AI 节点：上游输出自动喂给大模型，结论在 {{ .nodes.n2.answer }}',
+      flow: ['http', 'ai_agent'],
+      build: function () { return {
+        name: '示例：AI 摘要上游数据',
+        description: 'AI 工作流入门：http 节点抓回 JSON 数据，ai_agent 节点自动接收上游输出并交给大模型提炼要点，结论通过 answer 字段输出。',
+        cron: '',
+        group: DEMO_GROUP,
+        enabled: false,
+        graph: {
+          nodes: [
+            { id: 'n1', type: 'http', name: '抓取 Hacker News 热榜',
+              config: {
+                method: 'GET',
+                url: 'https://hacker-news.firebaseio.com/v0/topstories.json',
+                headers: {},
+                body: '',
+                timeout: 15
+              }
+            },
+            { id: 'n2', type: 'ai_agent', name: '让 AI 提炼要点',
+              dependsOn: ['n1'],
+              config: {
+                system_prompt: '你是一个技术资讯编辑。上游会给你一批 Hacker News 的帖子 ID（JSON 数组）。请基于这些数据完成任务，输出中文结论。',
+                user_prompt: '这是一批热度帖子 ID，请说明这份数据的规模与含义，并给出 3 条你会优先关注的判断依据。控制在 150 字以内。',
+                model: '',
+                base_url: '',
+                api_key: '',
+                temperature: 0.3,
+                max_iterations: 3,
+                timeout: 60,
+                tools: [],
+                native_tools: false
+              }
+            }
+          ],
+          edges: [{ source: 'n1', target: 'n2' }]
+        }
+      }; }
+    },
+    {
+      id: 'demo-ai-monitor',
+      category: 'ai',
+      name: '② AI 巡检并落盘告警',
+      description: 'HTTP → AI 判断健康 → Shell 记录',
+      tip: '把 AI 的结论 answer 交给普通节点继续处理，串成完整链路',
+      flow: ['http', 'ai_agent', 'shell'],
+      build: function () { return {
+        name: '示例：AI 巡检并落盘告警',
+        description: '典型 AI 工作流：抓接口 → ai_agent 判断服务是否健康（授权它在节点内用 http-call 工具自行复核）→ shell 节点把 AI 结论写入巡检日志。',
+        cron: '',
+        group: DEMO_GROUP,
+        enabled: false,
+        graph: {
+          nodes: [
+            { id: 'n1', type: 'http', name: '探测目标服务',
+              config: {
+                method: 'GET',
+                url: 'https://httpbin.org/status/200',
+                headers: {},
+                body: '',
+                timeout: 15
+              }
+            },
+            { id: 'n2', type: 'ai_agent', name: 'AI 判断健康状态',
+              dependsOn: ['n1'],
+              config: {
+                system_prompt: '你是 SRE 巡检助手。根据上游探测结果判断服务是否健康。若状态码异常，可调用 http-call 工具再复核一次。最后必须给出「健康 / 异常」的明确结论。',
+                user_prompt: '请给出结论，并附上一句话原因。',
+                model: '',
+                base_url: '',
+                api_key: '',
+                temperature: 0.1,
+                max_iterations: 5,
+                timeout: 60,
+                tools: ['http-call'],
+                native_tools: false
+              }
+            },
+            { id: 'n3', type: 'shell', name: '把 AI 结论写入日志',
+              dependsOn: ['n2'],
+              config: {
+                command: 'echo "{{ .nodes.n2.answer }}" >> ai-monitor.log',
+                workdir: '',
+                timeout: 10
+              }
+            }
+          ],
+          edges: [
+            { source: 'n1', target: 'n2' },
+            { source: 'n2', target: 'n3' }
+          ]
+        }
+      }; }
+    },
+    {
+      id: 'demo-ai-research',
+      category: 'ai',
+      name: '③ AI 自主联网调研',
+      description: '单个 AI 节点，自己调工具抓资料',
+      tip: 'Agent 模式：给它 http-call 工具，它会自己决定抓什么、抓几次',
+      flow: ['ai_agent'],
+      build: function () { return {
+        name: '示例：AI 自主联网调研',
+        description: '真正的 Agent 用法：整个流程只有一个 ai_agent 节点，给它 http-call 工具，由大模型自主决定抓取哪些资料、调用几次工具，最后汇总成报告。',
+        cron: '',
+        group: DEMO_GROUP,
+        enabled: false,
+        graph: {
+          nodes: [
+            { id: 'n1', type: 'ai_agent', name: 'AI 自主调研',
+              config: {
+                system_prompt: '你是一名调研助手，可以调用 http-call 工具访问公开接口获取真实数据，再基于数据给出结论。不要编造你没有查到的信息。',
+                user_prompt: '请调用 http-call 工具访问 https://api.github.com/repos/golang/go 与 https://api.github.com/repos/golang/vscode-go，' +
+                  '对比两个仓库的 star 数与简介，最后用中文给出一段 200 字以内的对比结论。',
+                model: '',
+                base_url: '',
+                api_key: '',
+                temperature: 0.2,
+                max_iterations: 8,
+                timeout: 120,
+                tools: ['http-call', 'delay-sleep'],
+                native_tools: false
+              }
+            }
+          ],
+          edges: []
+        }
+      }; }
+    },
+    {
+      id: 'demo-ai-daily-report',
+      category: 'ai',
+      name: '④ 定时 AI 日报',
+      description: 'Cron + AI 跑 shell 采集信息并汇总',
+      tip: 'AI 能调 shell-run 工具：让模型自己采集本机状态再总结，定时产出报告',
+      flow: ['cron', 'ai_agent', 'shell'],
+      build: function () { return {
+        name: '示例：定时 AI 日报',
+        description: '定时 + Agent 组合：每天触发一次，ai_agent 用 shell-run 工具自行执行系统命令采集本机状态，汇总成一段日报，再由 shell 节点写入文件。',
+        cron: '@daily',
+        group: DEMO_GROUP,
+        enabled: false,
+        graph: {
+          nodes: [
+            { id: 'n1', type: 'ai_agent', name: 'AI 采集并生成日报',
+              config: {
+                system_prompt: '你是运维日报助手。请调用 shell-run 工具执行合适的命令采集当前机器的基本信息（如系统版本、磁盘剩余、当前时间、运行中的关键进程等）。' +
+                  '注意跨平台：Windows 用 PowerShell 命令，Linux / macOS 用 sh 命令，命令失败时换一种写法重试。最多调用 5 次工具。',
+                user_prompt: '基于采集到的真实信息，生成一份 200 字以内的中文运维日报，包含：时间、系统概况、磁盘情况、需要注意的风险点。',
+                model: '',
+                base_url: '',
+                api_key: '',
+                temperature: 0.3,
+                max_iterations: 8,
+                timeout: 120,
+                tools: ['shell-run'],
+                native_tools: false
+              }
+            },
+            { id: 'n2', type: 'shell', name: '日报写入文件',
+              dependsOn: ['n1'],
+              config: {
+                command: 'echo "{{ .nodes.n1.answer }}" >> ai-daily-report.log',
+                workdir: '',
+                timeout: 10
+              }
+            }
+          ],
+          edges: [{ source: 'n1', target: 'n2' }]
+        }
+      }; }
+    },
+    {
+      id: 'demo-ai-extract-webhook',
+      category: 'ai',
+      name: '⑤ AI 结构化提取并回传',
+      description: 'HTTP → AI 抽取字段 → HTTP 回传',
+      tip: '进阶：让 AI 输出纯 JSON，下游节点直接当参数用',
+      flow: ['http', 'ai_agent', 'http'],
+      build: function () { return {
+        name: '示例：AI 结构化提取并回传',
+        description: 'AI 当「转换器」用：抓原始数据 → 让 AI 抽取成干净的 JSON → 把 AI 的 answer 作为请求体 POST 给下游系统。这是 AI 工作流最常见的落地形态。',
+        cron: '',
+        group: DEMO_GROUP,
+        enabled: false,
+        graph: {
+          nodes: [
+            { id: 'n1', type: 'http', name: '抓取原始数据',
+              config: {
+                method: 'GET',
+                url: 'https://api.github.com/repos/golang/go',
+                headers: { 'User-Agent': 'flowgo-demo' },
+                body: '',
+                timeout: 15
+              }
+            },
+            { id: 'n2', type: 'ai_agent', name: 'AI 抽取成 JSON',
+              dependsOn: ['n1'],
+              config: {
+                system_prompt: '你是数据清洗器。从上游 JSON 中抽取字段，输出一个 JSON 对象，只包含 name、stars、language、description 四个字段。',
+                user_prompt: '极其重要：最终输出必须是纯 JSON，不要 Markdown 代码块、不要任何解释文字。示例：{"name":"go","stars":1000,"language":"Go","description":"..."}',
+                model: '',
+                base_url: '',
+                api_key: '',
+                temperature: 0,
+                max_iterations: 3,
+                timeout: 60,
+                tools: [],
+                native_tools: false
+              }
+            },
+            { id: 'n3', type: 'http', name: '把结果 POST 出去',
+              dependsOn: ['n2'],
+              config: {
+                method: 'POST',
+                url: 'https://httpbin.org/post',
+                headers: { 'Content-Type': 'application/json' },
+                body: '{{ .nodes.n2.answer }}',
+                timeout: 15
+              }
+            }
+          ],
+          edges: [
+            { source: 'n1', target: 'n2' },
+            { source: 'n2', target: 'n3' }
+          ]
+        }
+      }; }
+    }
+  ];
+
   var state = {
     workflows: [],
     current: null,
@@ -213,7 +822,9 @@
     nodeTypes: ['http', 'shell', 'delay', 'ai_agent'],
     agentTools: ['http-call', 'shell-run', 'delay-sleep'],
     schedulerJobs: 0,
-    runFilter: 0
+    runFilter: 0,
+    tab: 'edit',          // 主区域当前标签页：edit = 编排，runs = 运行记录
+    stepCollapsed: {}     // 运行详情中步骤的折叠状态，键为 运行ID:步骤序号
   };
 
   var nodeSeq = 0;
@@ -288,11 +899,37 @@
     return { seconds: 1 };
   }
 
-  // ---------- 渲染：侧边栏 ----------
+  // ---------- 渲染：示例侧栏 ----------
+  // demoIndexOf 返回示例在 DEMOS 中的全局下标，供点击回调定位模板。
+  function demoIndexOf(demo) { return DEMOS.indexOf(demo); }
+
+  function renderDemosSidebar() {
+    $('#demoCount').textContent = DEMOS.length;
+    var box = $('#demoSidebar');
+    box.innerHTML = DEMO_CATEGORIES.map(function (cat) {
+      var items = DEMOS.filter(function (d) { return d.category === cat.id; });
+      if (!items.length) return '';
+      return '<div class="demo-cat">' +
+        '<div class="demo-cat-name">' + esc(cat.name) + '</div>' +
+        items.map(function (d) {
+          var i = demoIndexOf(d);
+          return '<div class="sidebar-demo-item" data-act="loadDemo" data-idx="' + i + '" title="' + esc(d.tip) + '">' +
+            '<div class="icon">' + esc(d.name.charAt(0)) + '</div>' +
+            '<div class="body">' +
+              '<div class="dname">' + esc(d.name) + '</div>' +
+              '<div class="ddesc">' + esc(d.description) + '</div>' +
+            '</div>' +
+          '</div>';
+        }).join('') +
+      '</div>';
+    }).join('');
+  }
+
+  // ---------- 渲染：工作流侧栏 ----------
   function renderSidebar() {
     var box = $('#wfList');
     if (!state.workflows.length) {
-      box.innerHTML = '<div class="empty" style="padding:24px 8px;font-size:12px;">暂无工作流</div>';
+      box.innerHTML = '<div class="empty" style="padding:24px 8px;font-size:12px;">暂无工作流，点击下方示例一键创建</div>';
       return;
     }
     box.innerHTML = state.workflows.map(function (wf) {
@@ -304,7 +941,7 @@
         '<div class="name"><span style="color:' + dotColor + '">●</span>' + esc(wf.name) + '</div>' +
         '<div class="meta">' +
           (wf.cron ? '⏱ ' + esc(wf.cron) : '未设定时') +
-          (wf.group ? ' <span class="grp">组:' + esc(wf.group) + '</span>' : '') +
+          (wf.group ? ' <span class="grp">' + esc(wf.group) + '</span>' : '') +
           ' · ' + nodeCount + ' 节点' +
         '</div>' +
       '</div>';
@@ -316,23 +953,94 @@
     var box = $('#content');
     if (!state.current) {
       box.innerHTML =
-        '<div class="empty">' +
-          '<div style="font-size:15px;margin-bottom:8px;">从左侧选择一个工作流，或新建一个</div>' +
-          '<div style="font-size:12px;">支持 http / shell / delay 节点，可插入 ai_agent 节点让大模型在节点内分析并调用工具，可由 Webhook 或 Cron 触发</div>' +
-        '</div>';
+        '<div class="demo-card" style="margin-top:6px;">' +
+          '<div class="demo-card-title"><span class="tag">DEMO</span>欢迎使用 FlowGo，从示例开始</div>' +
+          '<div class="hint" style="margin-bottom:16px;">' +
+            '下方是开箱即用的示例工作流，点击任意卡片即可一键创建并打开，边改边学。' +
+            '所有示例都会自动归入 <code class="inline">demo</code> 分组，与你的正式工作流区分开。' +
+          '</div>' +
+          DEMO_CATEGORIES.map(function (cat) {
+            var items = DEMOS.filter(function (d) { return d.category === cat.id; });
+            if (!items.length) return '';
+            return '<div class="demo-group">' +
+              '<div class="demo-group-head">' +
+                '<span class="demo-group-name">' + esc(cat.name) + '</span>' +
+                '<span class="demo-group-desc">' + esc(cat.desc) + '</span>' +
+              '</div>' +
+              '<div class="demo-grid">' + items.map(function (d) {
+                var i = demoIndexOf(d);
+                return '<div class="demo-card-item" data-act="loadDemo" data-idx="' + i + '">' +
+                  '<div class="demo-name">' + esc(d.name) + '</div>' +
+                  '<div class="demo-desc">' + esc(d.description) + '</div>' +
+                  '<div class="demo-tip">💡 ' + esc(d.tip) + '</div>' +
+                  '<div class="demo-flow">' + d.flow.map(function (t) {
+                    return '<span class="flow-tag">' + esc(t) + '</span>';
+                  }).join('') + '</div>' +
+                '</div>';
+              }).join('') + '</div>' +
+            '</div>';
+          }).join('') +
+        '</div>' +
+        '<div class="card"><div class="empty">' +
+          '<div style="font-size:14px;">或者点击左上角「+ 新建」，从零开始编排你的工作流</div>' +
+          '<div style="font-size:12px;margin-top:6px;">支持 http / shell / delay 节点，可插入 ai_agent 节点让大模型在节点内分析并调用工具，可由 Webhook 或 Cron 触发</div>' +
+        '</div></div>';
       return;
     }
 
     var c = state.current;
     var webhookURL = c.webhook_key ? (location.origin + '/hook/' + encodeURIComponent(c.webhook_key)) : '';
 
+    // 顶部「编辑 / 运行」标签页，两个页面互不干扰。
     box.innerHTML =
+      '<div class="content-tabs">' +
+        '<button class="content-tab' + (state.tab === 'edit' ? ' active' : '') + '" data-act="switchTab" data-tab="edit">编辑</button>' +
+        '<button class="content-tab' + (state.tab === 'runs' ? ' active' : '') + '" data-act="switchTab" data-tab="runs">' +
+          '运行记录<span class="tab-badge">' + state.runs.length + '</span>' +
+        '</button>' +
+      '</div>' +
+      '<div id="tabBody"></div>';
+
+    renderTabBody();
+  }
+
+  // renderTabBody 按当前标签页渲染主体内容：edit 为编排区，runs 为运行记录 + 步骤详情。
+  function renderTabBody() {
+    var box = $('#tabBody');
+    if (!box) return;
+    box.innerHTML = state.tab === 'runs' ? runsViewHTML() : editViewHTML();
+    if (state.tab === 'runs') {
+      renderRuns();
+      renderDetail();
+      renderTabs();
+    } else {
+      renderNodes();
+    }
+    syncPolling();
+  }
+
+  // switchTab 切换主标签页；切到运行页时顺带刷新一次运行记录。
+  function switchTab(tab) {
+    if (state.tab === tab) return;
+    state.tab = tab;
+    renderContent();
+    if (tab === 'runs') loadRuns(true);
+  }
+
+  // ---------- 视图：编辑页 ----------
+  function editViewHTML() {
+    var c = state.current;
+    var webhookURL = c.webhook_key ? (location.origin + '/hook/' + encodeURIComponent(c.webhook_key)) : '';
+
+    return (
       // 基本信息
       '<div class="card">' +
         '<div class="card-title">基本信息<div class="spacer"></div>' +
-          '<button class="btn small primary" data-act="save">保存</button> ' +
-          '<button class="btn small" data-act="runNow">▶ 运行</button> ' +
-          '<button class="btn small danger" data-act="remove">删除</button>' +
+          '<div class="actions">' +
+            '<button class="btn small primary" data-act="save">保存</button>' +
+            '<button class="btn small" data-act="runNow">▶ 运行并查看</button>' +
+            '<button class="btn small danger" data-act="remove">删除</button>' +
+          '</div>' +
         '</div>' +
         '<div class="row">' +
           '<div class="field"><label>名称</label>' +
@@ -353,8 +1061,8 @@
           '</div>' +
         '</div>' +
         '<div class="row">' +
-          '<div class="field"><label>分组（同一分组内的工作流串行执行，不同分组并行；留空则各自独立）</label>' +
-            '<input type="text" data-wf="group" value="' + esc(c.group || '') + '" placeholder="例如：mailer / etl，留空表示不分组" />' +
+          '<div class="field"><label>分组 <code class="inline">demo</code> 用于归集示例工作流</label>' +
+            '<input type="text" data-wf="group" value="' + esc(c.group || '') + '" placeholder="留空则各自独立；示例自动填 demo" />' +
             '<div class="hint">定时调度时，同分组的工作流同时仅运行一个实例，避免重复执行副作用</div>' +
           '</div>' +
         '</div>' +
@@ -386,30 +1094,34 @@
           'ai_agent 节点的 <code>{{ .nodes.n2.answer }}</code>' +
           '（省略前导点写成 <code>{{ nodes.n1.body }}</code> 亦可）' +
         '</div>' +
-      '</div>' +
+      '</div>'
+    );
+  }
 
-      // 运行记录
-      '<div class="card">' +
-        '<div class="card-title">运行记录' +
-          '<span id="pollingTag" class="hint" style="margin:0;color:var(--warn);display:none;">● 运行中，自动刷新</span>' +
-          '<div class="spacer"></div>' +
-          '<button class="btn small" data-act="refreshRuns">刷新</button>' +
+  // ---------- 视图：运行页 ----------
+  // 左侧运行记录列表，右侧一次展示该次运行每个步骤的输入 / 输出 / 错误。
+  function runsViewHTML() {
+    var c = state.current;
+    return (
+      '<div class="runs-layout">' +
+        '<div class="runs-side">' +
+          '<div class="runs-side-head">' +
+            '<span class="title">运行记录</span>' +
+            '<span id="pollingTag" class="hint" style="margin:0;color:var(--warn);display:none;">● 刷新中</span>' +
+            '<span class="spacer"></span>' +
+            '<button class="btn small" data-act="refreshRuns">刷新</button>' +
+          '</div>' +
+          '<div class="tabs" style="padding:10px 14px 0;margin:0;">' +
+            '<button class="tab" data-act="setFilter" data-id="0">全部</button>' +
+            '<button class="tab" data-act="setFilter" data-id="' + c.id + '">当前工作流</button>' +
+          '</div>' +
+          '<div class="run-list" id="runsBox"></div>' +
         '</div>' +
-        '<div class="tabs">' +
-          '<button class="tab" data-act="setFilter" data-id="0">全部</button>' +
-          '<button class="tab" data-act="setFilter" data-id="' + c.id + '">当前工作流</button>' +
+        '<div class="runs-main">' +
+          '<div id="detailBox"></div>' +
         '</div>' +
-        '<div id="runsBox"></div>' +
-      '</div>' +
-
-      // 运行详情
-      '<div id="detailBox"></div>';
-
-    renderNodes();
-    renderRuns();
-    renderDetail();
-    renderTabs();
-    syncPolling();
+      '</div>'
+    );
   }
 
   function renderTabs() {
@@ -539,76 +1251,118 @@
     box.innerHTML = state.nodes.map(nodeHTML).join('');
   }
 
-  // ---------- 渲染：运行记录 ----------
+  // ---------- 渲染：运行记录列表（运行页左侧） ----------
   function renderRuns() {
     var box = $('#runsBox');
     if (!box) return;
     if (!state.runs.length) {
-      box.innerHTML = '<div class="empty" style="padding:24px 0;">暂无运行记录</div>';
+      box.innerHTML = '<div class="empty" style="padding:28px 8px;font-size:12px;">暂无运行记录</div>';
       return;
     }
-    box.innerHTML =
-      '<table><thead><tr>' +
-        '<th style="width:60px;">ID</th><th style="width:110px;">状态</th><th style="width:90px;">触发</th>' +
-        '<th style="width:150px;">开始时间</th><th style="width:90px;">耗时</th><th>错误信息</th>' +
-      '</tr></thead><tbody>' +
-      state.runs.map(function (r) {
-        return '<tr class="clickable" data-act="loadDetail" data-id="' + r.id + '">' +
-          '<td class="mono">' + r.id + '</td>' +
-          '<td><span class="status ' + esc(r.status) + '">' + esc(r.status) + '</span></td>' +
-          '<td>' + esc(r.trigger) + '</td>' +
-          '<td class="mono">' + esc(r.started_at || r.created_at) + '</td>' +
-          '<td>' + esc(r.duration_ms) + ' ms</td>' +
-          '<td' + (r.error ? ' style="color:var(--danger)"' : '') + '>' + esc(r.error || '-') + '</td>' +
-        '</tr>';
-      }).join('') +
-      '</tbody></table>';
+    var activeID = state.detail ? state.detail.id : 0;
+    box.innerHTML = state.runs.map(function (r) {
+      var cls = 'run-item' + (r.id === activeID ? ' active' : '');
+      return '<div class="' + cls + '" data-act="loadDetail" data-id="' + r.id + '">' +
+        '<div class="r1">' +
+          '<span class="rid mono">#' + r.id + '</span>' +
+          '<span class="status ' + esc(r.status) + '">' + esc(r.status) + '</span>' +
+          '<span class="spacer"></span>' +
+          '<span class="hint" style="margin:0;">' + esc(r.duration_ms) + ' ms</span>' +
+        '</div>' +
+        '<div class="r2">' +
+          '<span>' + esc(r.trigger) + '</span>' +
+          '<span class="mono">' + esc(r.started_at || r.created_at) + '</span>' +
+        '</div>' +
+        (r.error ? '<div class="rerr" title="' + esc(r.error) + '">' + esc(r.error) + '</div>' : '') +
+      '</div>';
+    }).join('');
   }
 
-  // ---------- 渲染：运行详情 ----------
+  // ---------- 渲染：运行详情（运行页右侧，一次展示全部步骤结果） ----------
   function renderDetail() {
     var box = $('#detailBox');
     if (!box) return;
     var d = state.detail;
-    if (!d) { box.innerHTML = ''; return; }
+    if (!d) {
+      box.innerHTML =
+        '<div class="card"><div class="empty">' +
+          '<div style="font-size:14px;">从左侧选择一次运行，查看每个步骤的输入与输出</div>' +
+          '<div style="font-size:12px;margin-top:6px;">点击「▶ 运行并查看」或触发 Webhook 后，执行过程会自动出现在这里</div>' +
+        '</div></div>';
+      return;
+    }
 
+    var failedSteps = (d.steps || []).filter(function (s) { return s.status === 'failed'; }).length;
+
+    // 每个步骤默认展开，点击标题可折叠；state.stepCollapsed 记录折叠状态。
     var steps = (d.steps || []).map(function (s, i) {
-      return '<div class="log-item">' +
-        '<div class="log-head">' +
+      var collapsed = state.stepCollapsed[d.id + ':' + i] ? ' collapsed' : '';
+      var isFail = s.status === 'failed';
+      var inTxt = pretty(s.input);
+      var outTxt = pretty(s.output);
+      return '<div class="step' + (isFail ? ' failed' : '') + collapsed + '">' +
+        '<div class="step-head" data-act="toggleStep" data-idx="' + i + '">' +
           '<span class="node-idx">' + (i + 1) + '</span>' +
-          '<b>' + esc(s.node_name) + '</b>' +
+          '<span class="sname">' + esc(s.node_name || s.node_id) + '</span>' +
           '<span class="type-tag">' + esc(s.node_type) + '</span>' +
-          '<div class="spacer"></div>' +
+          '<span class="spacer"></span>' +
           '<span class="status ' + esc(s.status) + '">' + esc(s.status) + '</span>' +
           '<span class="hint" style="margin:0;">' + esc(s.duration_ms) + ' ms</span>' +
+          '<span class="arrow">▼</span>' +
         '</div>' +
-        (s.input ? '<pre>输入：' + esc(pretty(s.input)) + '</pre>' : '') +
-        (s.output ? '<pre>输出：' + esc(pretty(s.output)) + '</pre>' : '') +
-        (s.error ? '<pre style="color:var(--danger)">错误：' + esc(s.error) + '</pre>' : '') +
+        '<div class="step-body">' +
+          (s.input ? '<div class="sec-label">输入</div><pre>' + esc(inTxt) + '</pre>'
+                   : '<div class="sec-label">输入</div><div class="step-empty">（无）</div>') +
+          (s.output ? '<div class="sec-label">输出</div><pre>' + esc(outTxt) + '</pre>'
+                    : '<div class="sec-label">输出</div><div class="step-empty">（无）</div>') +
+          (s.error ? '<div class="sec-label">错误</div><pre class="err">' + esc(s.error) + '</pre>' : '') +
+        '</div>' +
       '</div>';
     }).join('');
 
     box.innerHTML =
       '<div class="card">' +
         '<div class="card-title">运行详情 #' + d.id +
-          (isActiveRun(d.status) ? '<span class="hint" style="margin:0;color:var(--warn);">执行中，每 2 秒自动刷新…</span>' : '') +
+          (isActiveRun(d.status) ? '<span class="hint" style="margin:0;color:var(--warn);">● 执行中，每 2 秒自动刷新…</span>' : '') +
           '<div class="spacer"></div>' +
-          '<button class="btn small" data-act="closeDetail">收起</button>' +
+          '<button class="btn small" data-act="toggleAllSteps">' +
+            (allStepsCollapsed(d) ? '全部展开' : '全部收起') +
+          '</button>' +
+          '<button class="btn small" data-act="refreshDetail">刷新</button>' +
+          '<button class="btn small danger" data-act="closeDetail">关闭</button>' +
         '</div>' +
         '<div class="kv" style="margin-bottom:12px;">' +
           '<span>状态 <b><span class="status ' + esc(d.status) + '">' + esc(d.status) + '</span></b></span>' +
           '<span>触发方式 <b>' + esc(d.trigger) + '</b></span>' +
           '<span>耗时 <b>' + esc(d.duration_ms) + ' ms</b></span>' +
           '<span>开始 <b class="mono">' + esc(d.started_at) + '</b></span>' +
+          '<span>步骤 <b>' + ((d.steps || []).length) + ' 个' +
+            (failedSteps ? '（失败 ' + failedSteps + '）' : '') + '</b></span>' +
         '</div>' +
         (d.payload ? '<div class="field"><label>触发负载</label><pre>' + esc(pretty(d.payload)) + '</pre></div>' : '') +
-        steps +
+        ((d.steps || []).length
+          ? steps
+          : '<div class="empty" style="padding:24px 0;">这次运行还没有步骤记录' +
+            (isActiveRun(d.status) ? '，执行中请稍候…' : '') + '</div>') +
       '</div>';
+  }
+
+  // allStepsCollapsed 判断当前运行的步骤是否全部处于折叠态，用于切换按钮文案。
+  function allStepsCollapsed(d) {
+    var steps = d.steps || [];
+    if (!steps.length) return false;
+    return steps.every(function (s, i) { return !!state.stepCollapsed[d.id + ':' + i]; });
   }
 
   function renderTopbar() {
     $('#jobCount').textContent = state.schedulerJobs;
     $('#typeList').textContent = state.nodeTypes.join(' / ');
+  }
+
+  // updateRunBadge 刷新「运行记录」标签页上的数量角标，不重绘主体内容。
+  function updateRunBadge() {
+    var badge = document.querySelector('.content-tab[data-tab="runs"] .tab-badge');
+    if (badge) badge.textContent = state.runs.length;
   }
 
   // ---------- 轮询 ----------
@@ -683,8 +1437,47 @@
     state.detail = null;
     state.runFilter = 0;
     state.runs = [];
+    state.tab = 'edit';
     renderSidebar();
     renderContent();
+  }
+
+  // focusRun 切换到运行记录页并选中某次运行，用于触发运行后立即观察执行过程。
+  // placeholder 为触发接口直接返回的记录，可先占位渲染，随后由详情接口补全步骤。
+  function focusRun(runID, placeholder) {
+    state.runFilter = state.current ? state.current.id : 0;
+    if (placeholder) state.detail = Object.assign({ steps: [] }, placeholder);
+    state.tab = 'runs';
+    renderContent();
+    return loadRuns(true).then(function () {
+      return runID ? loadDetail(runID, true) : null;
+    }).then(function () {
+      syncPolling();
+    });
+  }
+
+  // loadDemo 根据用户在侧栏或主区域点选的示例模板，POST 到后端创建工作流，
+  // 并在创建成功后自动打开。所有 demo 都统一打上 demo 分组便于辨识。
+  function loadDemo(idx) {
+    var demo = DEMOS[idx];
+    if (!demo) return;
+    var draft = demo.build();
+    var payload = {
+      name: draft.name,
+      description: draft.description || demo.description,
+      enabled: draft.enabled !== undefined ? draft.enabled : false,
+      cron: draft.cron || '',
+      group: draft.group || DEMO_GROUP,
+      webhook_key: '',
+      graph: JSON.stringify(draft.graph)
+    };
+    showToast('正在创建示例：' + demo.name);
+    api('/api/workflows', { method: 'POST', body: JSON.stringify(payload) })
+      .then(function (saved) {
+        return loadWorkflows().then(function () { return selectWorkflow(saved); });
+      })
+      .then(function () { showToast('已加载示例：' + demo.name); })
+      .catch(function (e) { showToast(e.message, 'error'); });
   }
 
   function parseGraph() {
@@ -820,6 +1613,7 @@
       var appeared = lastRunID > 0 && maxID > lastRunID;
       lastRunID = maxID;
       renderRuns();
+      updateRunBadge();
       syncPolling();
       return appeared;
     }).catch(function (e) {
@@ -834,6 +1628,7 @@
   function loadDetail(id, silent) {
     return api('/api/runs/' + id).then(function (d) {
       state.detail = d;
+      renderRuns();   // 同步刷新左侧列表的选中高亮
       renderDetail();
       syncPolling();
     }).catch(function (e) {
@@ -847,15 +1642,9 @@
     api('/api/workflows/' + state.current.id + '/run', {
       method: 'POST', body: JSON.stringify({ source: 'web-ui' })
     }).then(function (run) {
-      showToast('已触发运行 #' + run.id + '，进度自动刷新');
-      state.runFilter = state.current.id;
-      renderTabs();
-      // 先用触发返回的记录占位，详情卡片立即可见，再由轮询补全节点日志。
-      state.detail = Object.assign({ steps: [] }, run);
-      renderDetail();
-      return loadRuns(true).then(function () { return loadDetail(run.id, true); });
-    }).then(function () {
-      syncPolling();
+      showToast('已触发运行 #' + run.id + '，正在跳转到运行记录页');
+      // 先用触发返回的记录占位，详情立即可见，再由详情接口补全各步骤日志。
+      return focusRun(run.id, run);
     }).catch(function (e) {
       showToast(e.message, 'error');
     }).then(function () { busy.running = false; });
@@ -871,12 +1660,8 @@
       return res.json().then(function (data) {
         if (!res.ok) throw new Error(data.error || '触发失败');
         showToast('Webhook 已触发，运行 #' + data.run_id);
-        state.runFilter = state.current.id;
-        renderTabs();
-        return loadRuns(true).then(function () { return loadDetail(data.run_id, true); });
+        return focusRun(data.run_id, null);
       });
-    }).then(function () {
-      syncPolling();
     }).catch(function (e) { showToast(e.message, 'error'); });
   }
 
@@ -901,20 +1686,24 @@
     }).catch(function (e) { showToast(e.message, 'error'); });
   }
 
+  // loadMeta 并行拉取节点类型、Agent 工具与调度状态。
+  // 必须返回 Promise：启动流程依赖它串起 loadWorkflows，否则后续加载不会执行。
   function loadMeta() {
-    api('/api/node-types').then(function (t) {
-      state.nodeTypes = t; renderTopbar();
-      renderNodes();
-    }).catch(function () { /* 元数据加载失败不影响主流程 */ });
+    return Promise.all([
+      api('/api/node-types').then(function (t) {
+        state.nodeTypes = t; renderTopbar();
+        renderNodes();
+      }).catch(function () { /* 元数据加载失败不影响主流程 */ }),
 
-    api('/api/agent-tools').then(function (t) {
-      state.agentTools = t; renderNodes();
-    }).catch(function () { /* 保留默认工具清单 */ });
+      api('/api/agent-tools').then(function (t) {
+        state.agentTools = t; renderNodes();
+      }).catch(function () { /* 保留默认工具清单 */ }),
 
-    api('/health').then(function (h) {
-      state.schedulerJobs = (h.data && h.data.scheduler_jobs) || 0;
-      renderTopbar();
-    }).catch(function () { /* 健康检查失败不提示 */ });
+      api('/health').then(function (h) {
+        state.schedulerJobs = (h.data && h.data.scheduler_jobs) || 0;
+        renderTopbar();
+      }).catch(function () { /* 健康检查失败不提示 */ })
+    ]);
   }
 
   // ---------- 事件绑定 ----------
@@ -990,6 +1779,41 @@
         }).catch(function (err) { showToast(err.message, 'error'); });
         break;
 
+      case 'loadDemo':
+        loadDemo(idx);
+        break;
+
+      case 'switchTab':
+        switchTab(el.getAttribute('data-tab'));
+        break;
+
+      case 'toggleStep':
+        // 折叠/展开单个步骤，仅改 class 避免整块重绘导致闪烁。
+        var stepEl = el.closest('.step');
+        var d0 = state.detail;
+        if (stepEl && d0) {
+          var key = d0.id + ':' + idx;
+          var next = !stepEl.classList.contains('collapsed');
+          state.stepCollapsed[key] = next;
+          stepEl.classList.toggle('collapsed', next);
+          var btn = document.querySelector('[data-act="toggleAllSteps"]');
+          if (btn) btn.textContent = allStepsCollapsed(d0) ? '全部展开' : '全部收起';
+        }
+        break;
+
+      case 'toggleAllSteps':
+        var dAll = state.detail;
+        if (dAll) {
+          var collapse = !allStepsCollapsed(dAll);
+          (dAll.steps || []).forEach(function (s, i) { state.stepCollapsed[dAll.id + ':' + i] = collapse; });
+          renderDetail();
+        }
+        break;
+
+      case 'refreshDetail':
+        if (state.detail) loadDetail(state.detail.id);
+        break;
+
       case 'createWorkflow': createWorkflow(); break;
       case 'save': save(); break;
       case 'remove': remove(); break;
@@ -1029,6 +1853,7 @@
 
   // ---------- 启动 ----------
   renderTopbar();
+  renderDemosSidebar();
   renderSidebar();
   renderContent();
 
