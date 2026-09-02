@@ -95,8 +95,7 @@ func main() {
 
 	serverErr := make(chan error, 1)
 	go func() {
-		logger.Info("server starting",
-			zap.String("version", BuildInfo()),
+		logger.Info(fmt.Sprintf("server starting | version=%s", BuildInfo()),
 			zap.Int("port", config.GetServerPort()),
 			zap.String("console", fmt.Sprintf("http://localhost:%d", config.GetServerPort())),
 		)
