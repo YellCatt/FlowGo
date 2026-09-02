@@ -428,8 +428,9 @@
           <div class="card">
             <div class="card-title">
               运行记录
+              <span v-if="polling" class="hint" style="margin:0;color:var(--warn);">● 运行中，自动刷新</span>
               <div class="spacer"></div>
-              <button class="btn small" @click="loadRuns" :disabled="loadingRuns">刷新</button>
+              <button class="btn small" @click="loadRuns()" :disabled="loadingRuns">刷新</button>
             </div>
             <div class="tabs">
               <button class="tab" :class="{active: runFilter === 0}" @click="setFilter(0)">全部</button>
@@ -465,6 +466,7 @@
           <div class="card" v-if="detail">
             <div class="card-title">
               运行详情 #{{ detail.id }}
+              <span v-if="isActiveRun(detail.status)" class="hint" style="margin:0;color:var(--warn);">执行中，每 2 秒自动刷新…</span>
               <div class="spacer"></div>
               <button class="btn small" @click="detail = null">收起</button>
             </div>
@@ -501,7 +503,12 @@
 </div>
 
 <script>
-const { createApp, ref, reactive, computed, onMounted } = Vue;
+const { createApp, ref, reactive, computed, onMounted, onUnmounted } = Vue;
+
+// POLL_INTERVAL 运行中（pending / running）时列表与详情的轮询间隔。
+const POLL_INTERVAL = 2000;
+// WATCH_INTERVAL 感知 Cron / Webhook 等外部触发新增运行记录的间隔。
+const WATCH_INTERVAL = 30000;
 
 createApp({
   setup() {
@@ -518,8 +525,12 @@ createApp({
     const saving = ref(false);
     const running = ref(false);
     const loadingRuns = ref(false);
+    const polling = ref(false);
 
     let nodeSeq = 0;
+    let pollTimer = null;   // 运行中详情/列表的轮询定时器
+    let watchTimer = null;  // 外部触发感知定时器
+    let lastRunID = 0;      // 已知的最大运行记录 ID，用于发现新运行
 
     const api = async (url, options) => {
       const res = await fetch(url, Object.assign({
@@ -548,6 +559,8 @@ createApp({
 
     const selectWorkflow = async (wf) => {
       const full = await api('/api/workflows/' + wf.id);
+      stopPolling();
+      lastRunID = 0;
       current.value = full;
       detail.value = null;
       runFilter.value = full.id;
@@ -556,6 +569,8 @@ createApp({
     };
 
     const createWorkflow = () => {
+      stopPolling();
+      lastRunID = 0;
       current.value = {
         id: 0, name: '新工作流', description: '', enabled: true,
         cron: '', webhook_key: '', graph: ''
@@ -681,6 +696,42 @@ createApp({
     };
 
     // ---------- 运行 ----------
+    // isActiveRun 判断状态是否为非终态（仍需继续轮询）。
+    const isActiveRun = (status) => status === 'pending' || status === 'running';
+
+    const hasActiveRun = () =>
+      runs.value.some(r => isActiveRun(r.status)) ||
+      !!(detail.value && isActiveRun(detail.value.status));
+
+    const startPolling = () => {
+      if (pollTimer) return;
+      polling.value = true;
+      pollTimer = setInterval(pollTick, POLL_INTERVAL);
+    };
+
+    const stopPolling = () => {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = null;
+      polling.value = false;
+    };
+
+    // syncPolling 按当前是否存在未结束的运行，自动开启或停止轮询。
+    const syncPolling = () => { hasActiveRun() ? startPolling() : stopPolling(); };
+
+    // pollTick 单次轮询：刷新列表与已展开的详情，全部进入终态后自动停止。
+    const pollTick = async () => {
+      await loadRuns(true);
+      if (detail.value) await loadDetail({ id: detail.value.id }, true);
+      if (!hasActiveRun()) stopPolling();
+    };
+
+    // watchTick 定时感知 Cron / Webhook 等外部触发新增的运行记录。
+    const watchTick = async () => {
+      if (pollTimer || !current.value || !current.value.id) return;
+      const appeared = await loadRuns(true);
+      if (appeared) showToast('检测到新的运行记录');
+    };
+
     const runNow = async () => {
       if (!current.value.id) { showToast('请先保存工作流', 'error'); return; }
       running.value = true;
@@ -688,10 +739,13 @@ createApp({
         const run = await api('/api/workflows/' + current.value.id + '/run', {
           method: 'POST', body: JSON.stringify({ source: 'web-ui' })
         });
-        showToast('已触发运行 #' + run.id);
+        showToast('已触发运行 #' + run.id + '，进度自动刷新');
         runFilter.value = current.value.id;
-        await loadRuns();
-        await loadDetail(run);
+        // 先用触发返回的记录占位，详情卡片立即可见，再由轮询补全节点日志。
+        detail.value = Object.assign({ steps: [] }, run);
+        await loadRuns(true);
+        await loadDetail(run, true);
+        syncPolling();
       } catch (e) {
         showToast(e.message, 'error');
       } finally { running.value = false; }
@@ -709,24 +763,41 @@ createApp({
         if (!res.ok) throw new Error(data.error || '触发失败');
         showToast('Webhook 已触发，运行 #' + data.run_id);
         runFilter.value = current.value.id;
-        await loadRuns();
-        await loadDetail({ id: data.run_id });
+        await loadRuns(true);
+        await loadDetail({ id: data.run_id }, true);
+        syncPolling();
       } catch (e) { showToast(e.message, 'error'); }
     };
 
-    const setFilter = (id) => { runFilter.value = id; loadRuns(); };
+    const setFilter = (id) => { runFilter.value = id; lastRunID = 0; loadRuns(); };
 
-    const loadRuns = async () => {
-      loadingRuns.value = true;
+    // loadRuns 拉取运行记录列表，silent 为真时不显示加载态与错误提示（轮询用）。
+    // 返回值表示本次是否出现了比上次更新的运行记录。
+    const loadRuns = async (silent) => {
+      if (!silent) loadingRuns.value = true;
       try {
-        const id = runFilter.value || current.value.id;
-        runs.value = await api('/api/runs?workflow_id=' + (id || '') + '&limit=30') || [];
-      } catch (e) { showToast(e.message, 'error'); }
-      finally { loadingRuns.value = false; }
+        const id = runFilter.value || (current.value && current.value.id);
+        const list = await api('/api/runs?workflow_id=' + (id || '') + '&limit=30') || [];
+        runs.value = list;
+        const maxID = list.reduce((m, r) => (r.id > m ? r.id : m), 0);
+        const appeared = lastRunID > 0 && maxID > lastRunID;
+        lastRunID = maxID;
+        syncPolling();
+        return appeared;
+      } catch (e) {
+        if (!silent) showToast(e.message, 'error');
+        return false;
+      } finally {
+        if (!silent) loadingRuns.value = false;
+      }
     };
 
-    const loadDetail = async (run) => {
-      detail.value = await api('/api/runs/' + run.id);
+    const loadDetail = async (run, silent) => {
+      try {
+        detail.value = await api('/api/runs/' + run.id);
+      } catch (e) {
+        if (!silent) showToast(e.message, 'error');
+      }
     };
 
     const refreshStatus = async () => {
@@ -764,14 +835,22 @@ createApp({
       await loadMeta();
       await loadWorkflows();
       if (workflows.value.length) await selectWorkflow(workflows.value[0]);
+      // 定时感知定时任务 / Webhook 等外部触发产生的新运行记录。
+      watchTimer = setInterval(watchTick, WATCH_INTERVAL);
+    });
+
+    onUnmounted(() => {
+      stopPolling();
+      if (watchTimer) clearInterval(watchTimer);
+      watchTimer = null;
     });
 
     return {
       workflows, current, nodes, runs, detail, nodeTypes, agentTools, schedulerJobs, runFilter,
-      toast, saving, running, loadingRuns, webhookURL,
+      toast, saving, running, loadingRuns, polling, webhookURL,
       selectWorkflow, createWorkflow, save, remove, runNow, testWebhook,
       addNode, onTypeChange, removeNode, moveUp, moveDown,
-      loadRuns, loadDetail, setFilter, refreshStatus, copy, pretty
+      loadRuns, loadDetail, setFilter, refreshStatus, copy, pretty, isActiveRun
     };
   }
 }).mount('#app');

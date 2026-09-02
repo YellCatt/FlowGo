@@ -25,7 +25,7 @@ type WorkflowService interface {
 	Create(wf *model.Workflow) error
 	Update(wf *model.Workflow) error
 	Delete(id uint) error
-	Trigger(ctx context.Context, id uint, trigger, payload string) (*model.Run, error)
+	TriggerAsync(id uint, trigger, payload string) (*model.Run, error)
 	TriggerByWebhook(ctx context.Context, key, payload string) (*model.Run, error)
 	NodeTypes() []string
 	AgentTools() []string
@@ -100,13 +100,14 @@ func (s *workflowService) Delete(id uint) error {
 	return s.repo.Delete(id)
 }
 
-// Trigger 按 ID 触发一次执行，忽略工作流的启用状态（手动运行始终可用）。
-func (s *workflowService) Trigger(ctx context.Context, id uint, trigger, payload string) (*model.Run, error) {
+// TriggerAsync 按 ID 异步触发一次执行：立即返回 pending 运行记录，节点在后台执行，
+// 忽略工作流的启用状态（手动运行始终可用）。
+func (s *workflowService) TriggerAsync(id uint, trigger, payload string) (*model.Run, error) {
 	wf, err := s.Get(id)
 	if err != nil {
 		return nil, err
 	}
-	return s.engine.Execute(ctx, wf, trigger, payload)
+	return s.engine.ExecuteAsync(wf, trigger, payload)
 }
 
 // TriggerByWebhook 按 Webhook 密钥触发执行，仅启用中的工作流可被触发。

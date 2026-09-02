@@ -4,11 +4,20 @@ package config
 import (
 	"log"
 	"path/filepath"
+	"time"
 
 	"os"
 
 	"gopkg.in/yaml.v3"
 )
+
+// defaultMaxRunDurationMin 未配置或配置非法时，单次运行的最长持续时间（分钟）。
+const defaultMaxRunDurationMin = 30
+
+// RunConfig 工作流运行相关的配置。
+type RunConfig struct {
+	MaxDurationMin int `yaml:"max_duration_min"` // 单次运行的最长持续时间（分钟），超时后整体中止
+}
 
 // LLMConfig 大模型配置，为 ai_agent 节点提供默认值。
 type LLMConfig struct {
@@ -23,6 +32,7 @@ type Config struct {
 	Server   ServerConfig   `yaml:"server"`   // 服务端配置
 	Database DatabaseConfig `yaml:"database"` // 数据库配置
 	Log      LogConfig      `yaml:"log"`      // 日志配置
+	Run      RunConfig      `yaml:"run"`      // 运行配置（单次运行的超时保护）
 	LLM      LLMConfig      `yaml:"llm"`      // 大模型配置（ai_agent 节点默认值）
 }
 
@@ -80,6 +90,9 @@ func createDefaultConfig(path string) error {
 			Path:  "./logs",
 			Level: "info",
 		},
+		Run: RunConfig{
+			MaxDurationMin: defaultMaxRunDurationMin,
+		},
 		LLM: LLMConfig{
 			BaseURL: "https://api.openai.com/v1",
 			APIKey:  "",
@@ -118,6 +131,15 @@ func GetLogPath() string {
 // GetLogLevel 返回当前配置的日志级别。
 func GetLogLevel() string {
 	return cfg.Log.Level
+}
+
+// GetMaxRunDuration 返回单次运行的最长持续时间，超时后整条流程被中止。
+// 未配置或配置为非正数时回退到默认值 30 分钟。
+func GetMaxRunDuration() time.Duration {
+	if cfg.Run.MaxDurationMin > 0 {
+		return time.Duration(cfg.Run.MaxDurationMin) * time.Minute
+	}
+	return time.Duration(defaultMaxRunDurationMin) * time.Minute
 }
 
 // GetLLMBaseURL 返回大模型接口地址，节点未单独配置时使用。

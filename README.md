@@ -226,7 +226,7 @@ curl -X POST http://localhost:9001/hook/<webhook_key> \
 | GET | `/api/workflows/{id}` | 工作流详情 |
 | PUT | `/api/workflows/{id}` | 更新工作流 |
 | DELETE | `/api/workflows/{id}` | 删除工作流 |
-| POST | `/api/workflows/{id}/run` | 手动触发一次运行 |
+| POST | `/api/workflows/{id}/run` | 手动触发一次运行（异步，立即返回 `pending` 记录，进度轮询 `/api/runs/{id}`） |
 | GET | `/api/node-types` | 内置节点类型 |
 | GET | `/api/agent-tools` | `ai_agent` 节点内部可调用的工具清单 |
 | GET | `/api/runs` | 运行记录列表（支持 `workflow_id`、`limit`） |
@@ -249,6 +249,10 @@ log:
   path: ./logs
   level: info
 
+# 运行的超时保护，长耗时场景（如 ai_agent 分析大文件）可适当调大
+run:
+  max_duration_min: 30
+
 # ai_agent 节点的默认值，节点配置中单独填写的字段优先级更高
 llm:
   base_url: https://api.openai.com/v1
@@ -263,6 +267,7 @@ llm:
 | database.path | SQLite 数据库路径 | ./data.db |
 | log.path | 日志目录 | ./logs |
 | log.level | 日志级别（debug/info/warn/error） | info |
+| run.max_duration_min | 单次运行的最长持续时间（分钟），超时后整条流程被中止，非正数回退默认值 | 30 |
 | llm.base_url | 大模型接口地址（OpenAI 兼容） | https://api.openai.com/v1 |
 | llm.api_key | 大模型密钥，`ai_agent` 节点未单独配置时使用 | 空 |
 | llm.model | 默认模型名 | gpt-4o-mini |

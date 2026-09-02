@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/example/flowgo/config"
 	"github.com/example/flowgo/logger"
 	"github.com/example/flowgo/model"
 	"github.com/example/flowgo/node"
@@ -15,58 +16,117 @@ import (
 	"go.uber.org/zap"
 )
 
-// maxRunDuration 单次运行的最长持续时间，超时后整体中止。
-const maxRunDuration = 30 * time.Minute
-
 // maskedValue 写入执行日志时替换敏感配置的占位符。
 const maskedValue = "***"
 
 // Engine 工作流执行引擎。
 type Engine struct {
 	runs repository.RunRepository
+
+	// maxRunDuration 单次运行的最长持续时间，超时后整体中止，由 config.run.max_duration_min 提供。
+	maxRunDuration time.Duration
 }
 
-// NewEngine 创建执行引擎实例。
+// NewEngine 创建执行引擎实例，运行超时上限取自配置。
 func NewEngine(runs repository.RunRepository) *Engine {
-	return &Engine{runs: runs}
+	return &Engine{runs: runs, maxRunDuration: config.GetMaxRunDuration()}
 }
 
-// Execute 触发一次工作流执行：
+// Execute 同步触发一次工作流执行，直到全部节点结束后才返回：
 // 1. 落库一条 running 状态的运行记录；
 // 2. 对图做拓扑排序，按序串行执行节点；
 // 3. 每个节点的输入、输出、耗时写入 step_logs；
 // 4. 任一节点失败即终止，运行记录标记 failed。
 func (e *Engine) Execute(ctx context.Context, wf *model.Workflow, trigger, payload string) (*model.Run, error) {
-	ctx, cancel := context.WithTimeout(ctx, maxRunDuration)
-	defer cancel()
+	run, err := e.createRun(wf, trigger, payload, model.RunStatusRunning)
+	if err != nil {
+		return nil, err
+	}
+	return run, e.runWorkflow(ctx, run, wf, trigger, payload)
+}
 
-	now := model.Now()
+// ExecuteAsync 异步触发一次工作流执行：
+// 先落库一条 pending 运行记录并立即返回，节点执行交由后台 goroutine 完成，
+// 调用方无需等待长耗时节点（如 ai_agent），可凭 run.ID 轮询进度。
+func (e *Engine) ExecuteAsync(wf *model.Workflow, trigger, payload string) (*model.Run, error) {
+	run, err := e.createRun(wf, trigger, payload, model.RunStatusPending)
+	if err != nil {
+		return nil, err
+	}
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Error("panic in async run",
+					zap.Uint("run_id", run.ID), zap.Any("recover", r))
+				e.finishRun(run, model.RunStatusFailed, fmt.Sprintf("panic: %v", r))
+			}
+		}()
+		// 后台执行不复用请求上下文，避免 HTTP 响应返回后运行被取消。
+		if err := e.runWorkflow(context.Background(), run, wf, trigger, payload); err != nil {
+			logger.Warn("async run failed", zap.Uint("run_id", run.ID), zap.Error(err))
+		}
+	}()
+
+	return run, nil
+}
+
+// createRun 落库一条运行记录，status 为 running 时同时写入开始时间。
+func (e *Engine) createRun(wf *model.Workflow, trigger, payload, status string) (*model.Run, error) {
 	run := &model.Run{
 		WorkflowID: wf.ID,
 		Workflow:   wf.Name,
-		Status:     model.RunStatusRunning,
+		Status:     status,
 		Trigger:    trigger,
 		Payload:    payload,
-		StartedAt:  &now,
+	}
+	if status == model.RunStatusRunning {
+		now := model.Now()
+		run.StartedAt = &now
 	}
 	if err := e.runs.Create(run); err != nil {
 		return nil, fmt.Errorf("failed to create run: %w", err)
 	}
+	return run, nil
+}
+
+// markRunning 将 pending 的运行记录置为 running，并补写开始时间。
+func (e *Engine) markRunning(run *model.Run) {
+	if run.StartedAt == nil {
+		now := model.Now()
+		run.StartedAt = &now
+	}
+	if run.Status == model.RunStatusRunning {
+		return
+	}
+	run.Status = model.RunStatusRunning
+	if err := e.runs.Update(run); err != nil {
+		logger.Error("failed to mark run as running", zap.Uint("run_id", run.ID), zap.Error(err))
+	}
+}
+
+// runWorkflow 执行已落库的运行记录：拓扑排序后串行执行节点并写入节点日志，
+// 任一节点失败即终止，运行记录标记 failed。
+func (e *Engine) runWorkflow(ctx context.Context, run *model.Run, wf *model.Workflow, trigger, payload string) error {
+	ctx, cancel := context.WithTimeout(ctx, e.maxRunDuration)
+	defer cancel()
+
+	e.markRunning(run)
 
 	graph, err := wf.ParseGraph()
 	if err != nil {
 		e.finishRun(run, model.RunStatusFailed, err.Error())
-		return run, err
+		return err
 	}
 
 	order, err := topoSort(graph)
 	if err != nil {
 		e.finishRun(run, model.RunStatusFailed, err.Error())
-		return run, err
+		return err
 	}
 	if len(order) == 0 {
 		e.finishRun(run, model.RunStatusSuccess, "")
-		return run, nil
+		return nil
 	}
 
 	nodeByID := map[string]*model.NodeDef{}
@@ -108,14 +168,14 @@ func (e *Engine) Execute(ctx context.Context, wf *model.Workflow, trigger, paylo
 			err := fmt.Errorf("unsupported node type %q on node %q", def.Type, id)
 			e.logNodeFailure(run, def, nil, err)
 			e.finishRun(run, model.RunStatusFailed, err.Error())
-			return run, err
+			return err
 		}
 
 		rendered, rerr := renderConfig(def.Config, vars)
 		if rerr != nil {
 			e.logNodeFailure(run, def, nil, rerr)
 			e.finishRun(run, model.RunStatusFailed, rerr.Error())
-			return run, rerr
+			return rerr
 		}
 
 		started := model.Now()
@@ -160,7 +220,7 @@ func (e *Engine) Execute(ctx context.Context, wf *model.Workflow, trigger, paylo
 			)
 			e.finishRun(run, model.RunStatusFailed,
 				fmt.Sprintf("node %q (%s) failed: %v", def.Name, def.Type, execErr))
-			return run, execErr
+			return execErr
 		}
 
 		step.Status = model.RunStatusSuccess
@@ -179,7 +239,7 @@ func (e *Engine) Execute(ctx context.Context, wf *model.Workflow, trigger, paylo
 	}
 
 	e.finishRun(run, model.RunStatusSuccess, "")
-	return run, nil
+	return nil
 }
 
 // finishRun 收尾运行记录，写入终态、结束时间与总耗时。

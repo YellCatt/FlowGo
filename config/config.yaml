@@ -8,6 +8,10 @@ log:
   path: ./logs
   level: info
 
+# 运行的超时保护，长耗时场景（如 ai_agent 分析大文件）可适当调大
+run:
+  max_duration_min: 30
+
 # ai_agent 节点的默认值，节点配置中单独填写的字段优先级更高
 llm:
   base_url: https://api.openai.com/v1

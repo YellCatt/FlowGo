@@ -98,6 +98,7 @@ func (c *WorkflowController) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 // Run 处理 POST /api/workflows/{id}/run，手动触发一次执行。
+// 立即返回 pending 状态的运行记录，执行进度由前端轮询 /api/runs/{id} 获取。
 func (c *WorkflowController) Run(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r)
 	if err != nil {
@@ -106,7 +107,7 @@ func (c *WorkflowController) Run(w http.ResponseWriter, r *http.Request) {
 	}
 
 	payload := readRunPayload(r)
-	run, err := c.service.Trigger(r.Context(), id, model.TriggerManual, payload)
+	run, err := c.service.TriggerAsync(id, model.TriggerManual, payload)
 	if err != nil {
 		writeStatusErr(w, err)
 		return
