@@ -23,6 +23,10 @@ type Scheduler struct {
 
 	mu      sync.Mutex
 	entries map[uint]cron.EntryID
+
+	// running 记录正在执行的工作流 ID，用于保证同一工作流同时只有一个运行实例；
+	// 上一次触发尚未结束时，新的 cron 触发会被跳过，避免重复产生副作用。
+	running sync.Map
 }
 
 // NewScheduler 创建调度器实例，使用带秒位的 Cron 解析器（支持 6 段表达式）。
@@ -132,6 +136,17 @@ func (s *Scheduler) runWorkflow(id uint) {
 		return
 	}
 
+	// 同一工作流同时只允许一个运行实例：以 workflowID 为键在 running 中占位，
+	// 已存在说明上一次触发仍在执行，本次直接跳过，避免重复产生副作用（如重复发邮件、重复写库）。
+	// 注意 LoadOrStore 必须在启动 goroutine 之前同步完成，覆盖「查询后到协程真正执行」之间的时间窗口。
+	if _, loaded := s.running.LoadOrStore(id, struct{}{}); loaded {
+		logger.Warn("上一次定时运行尚未结束，本次触发已跳过（避免重复执行副作用）",
+			zap.Uint("工作流ID", id),
+			zap.String("工作流名称", wf.Name),
+		)
+		return
+	}
+
 	logger.Info("定时任务触发工作流",
 		zap.Uint("工作流ID", id),
 		zap.String("工作流名称", wf.Name),
@@ -139,6 +154,8 @@ func (s *Scheduler) runWorkflow(id uint) {
 
 	// 异步执行，避免长时间任务阻塞调度循环。
 	go func() {
+		// 运行结束（含 panic）立即清除占位，允许下一次触发正常进入。
+		defer s.running.Delete(id)
 		defer func() {
 			if r := recover(); r != nil {
 				logger.Error("定时运行过程发生 panic",
