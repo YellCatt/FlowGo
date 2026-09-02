@@ -8,6 +8,10 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/example/flowgo/logger"
+
+	"go.uber.org/zap"
 )
 
 // maxOutputLog stdout/stderr 写入日志的最大字节数。
@@ -25,6 +29,8 @@ func (e *ShellExecutor) Type() string { return TypeShell }
 func (e *ShellExecutor) Run(ctx context.Context, cfg map[string]any, ec *Context) (map[string]any, error) {
 	command := str(cfg, "command", "")
 	if strings.TrimSpace(command) == "" {
+		logger.Error("Shell 节点缺少 command 配置，执行失败",
+			zap.String("node", nodeIDOf(ec)))
 		return nil, fmt.Errorf("shell node requires a non-empty command")
 	}
 
@@ -43,6 +49,13 @@ func (e *ShellExecutor) Run(ctx context.Context, cfg map[string]any, ec *Context
 	if dir := str(cfg, "workdir", ""); dir != "" {
 		cmd.Dir = dir
 	}
+
+	logger.Debug("Shell 节点开始执行命令",
+		zap.String("node", nodeIDOf(ec)),
+		zap.String("命令", command),
+		zap.Int("超时_秒", timeoutSec),
+		zap.String("工作目录", str(cfg, "workdir", "")),
+	)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -67,14 +80,34 @@ func (e *ShellExecutor) Run(ctx context.Context, cfg map[string]any, ec *Context
 		}
 		out["exit_code"] = code
 		if ctx.Err() == context.DeadlineExceeded {
+			logger.Warn("Shell 节点执行超时，已终止",
+				zap.String("node", nodeIDOf(ec)),
+				zap.String("命令", command),
+				zap.Int("超时_秒", timeoutSec),
+			)
 			return out, fmt.Errorf("shell node timed out after %ds", timeoutSec)
 		}
 		if ctx.Err() != nil {
+			logger.Warn("Shell 节点被上下文取消",
+				zap.String("node", nodeIDOf(ec)),
+				zap.String("命令", command),
+			)
 			return out, ctx.Err()
 		}
+		logger.Warn("Shell 节点执行失败",
+			zap.String("node", nodeIDOf(ec)),
+			zap.String("命令", command),
+			zap.Int("退出码", code),
+			zap.Int64("耗时_毫秒", elapsed),
+		)
 		return out, fmt.Errorf("shell node exited with code %d: %s", code, truncate(stderr.String(), 512))
 	}
 
+	logger.Debug("Shell 节点执行完成",
+		zap.String("node", nodeIDOf(ec)),
+		zap.String("命令", command),
+		zap.Int64("耗时_毫秒", elapsed),
+	)
 	return out, nil
 }
 

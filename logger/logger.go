@@ -40,6 +40,10 @@ func Init(path string, level string) error {
 	}
 	encoder := zapcore.NewConsoleEncoder(encoderConfig)
 
+	debugFile, err := openLogFile(path, "debug.log")
+	if err != nil {
+		return err
+	}
 	infoFile, err := openLogFile(path, "info.log")
 	if err != nil {
 		return err
@@ -53,12 +57,14 @@ func Init(path string, level string) error {
 		return err
 	}
 
+	// debug.log 仅在配置级别为 debug 时写入，避免生产环境产生大量调试日志。
+	debugCore := zapcore.NewCore(encoder, zapcore.AddSync(debugFile), exactLevel(lvl, zapcore.DebugLevel))
 	infoCore := zapcore.NewCore(encoder, zapcore.AddSync(infoFile), exactLevel(lvl, zapcore.InfoLevel))
 	warnCore := zapcore.NewCore(encoder, zapcore.AddSync(warnFile), exactLevel(lvl, zapcore.WarnLevel))
 	errorCore := zapcore.NewCore(encoder, zapcore.AddSync(errorFile), atLeastLevel(zapcore.ErrorLevel))
 	consoleCore := zapcore.NewCore(encoder, zapcore.Lock(os.Stdout), atLeastLevel(lvl))
 
-	core := zapcore.NewTee(infoCore, warnCore, errorCore, consoleCore)
+	core := zapcore.NewTee(debugCore, infoCore, warnCore, errorCore, consoleCore)
 
 	log = zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
 	zap.ReplaceGlobals(log)

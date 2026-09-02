@@ -118,8 +118,18 @@ func (c *llmClient) chat(ctx context.Context, req llmRequest) (*llmResponse, err
 	}
 
 	start := time.Now()
+	logger.Debug("正在向大模型发起 HTTP 请求",
+		zap.String("模型", req.Model),
+		zap.String("接口地址", c.endpoint()),
+		zap.Int("消息条数", len(req.Messages)),
+	)
 	resp, err := c.client.Do(httpReq)
 	if err != nil {
+		logger.Error("大模型 HTTP 请求失败",
+			zap.String("模型", req.Model),
+			zap.String("接口地址", c.endpoint()),
+			zap.Error(err),
+		)
 		return nil, fmt.Errorf("llm request failed: %w", err)
 	}
 	defer resp.Body.Close()
@@ -138,17 +148,24 @@ func (c *llmClient) chat(ctx context.Context, req llmRequest) (*llmResponse, err
 		return nil, fmt.Errorf("llm returned error: %s", out.Error.Message)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		logger.Error("大模型返回非成功状态码",
+			zap.String("模型", req.Model),
+			zap.Int("状态码", resp.StatusCode),
+		)
 		return nil, fmt.Errorf("llm returned http %d: %s", resp.StatusCode, truncate(string(raw), maxLLMErrorBody))
 	}
 	if len(out.Choices) == 0 {
+		logger.Error("大模型返回结果为空（无 choices）",
+			zap.String("模型", req.Model),
+		)
 		return nil, fmt.Errorf("llm returned no choices: %s", truncate(string(raw), maxLLMErrorBody))
 	}
 
-	logger.Debug("llm chat finished",
-		zap.String("model", req.Model),
-		zap.Int64("duration_ms", elapsed),
-		zap.Int("prompt_tokens", out.Usage.PromptTokens),
-		zap.Int("completion_tokens", out.Usage.CompletionTokens),
+	logger.Debug("大模型调用完成",
+		zap.String("模型", req.Model),
+		zap.Int64("耗时_毫秒", elapsed),
+		zap.Int("输入令牌", out.Usage.PromptTokens),
+		zap.Int("输出令牌", out.Usage.CompletionTokens),
 	)
 	return &out, nil
 }

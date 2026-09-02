@@ -59,22 +59,25 @@ var cfg Config // 全局配置实例，由 LoadConfig 加载
 func LoadConfig() {
 	configPath := "config/config.yaml"
 
+	// 此处日志组件尚未初始化，只能用标准 log 输出，故保持中文说明便于排障。
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		log.Println("config file not found, creating default config...")
+		log.Println("[配置] 未找到 config/config.yaml，正在生成默认配置...")
 		if err := createDefaultConfig(configPath); err != nil {
-			log.Fatalf("failed to create default config: %v", err)
+			log.Fatalf("[配置] 生成默认配置文件失败：%v", err)
 		}
+		log.Println("[配置] 默认配置文件已生成：" + configPath)
 	}
 
 	file, err := os.ReadFile(configPath)
 	if err != nil {
-		log.Fatalf("failed to read config file: %v", err)
+		log.Fatalf("[配置] 读取配置文件失败：%v", err)
 	}
 
 	err = yaml.Unmarshal(file, &cfg)
 	if err != nil {
-		log.Fatalf("failed to parse config file: %v", err)
+		log.Fatalf("[配置] 解析配置文件失败：%v", err)
 	}
+	log.Printf("[配置] 配置加载完成：%s", configPath)
 }
 
 // createDefaultConfig 创建默认配置文件并写入指定路径。

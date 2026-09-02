@@ -42,14 +42,14 @@ func (s *Scheduler) Start() error {
 		return err
 	}
 	s.cron.Start()
-	logger.Info("scheduler started")
+	logger.Info("定时调度器已启动")
 	return nil
 }
 
 // Stop 停止调度循环，返回的 Context 可用于等待进行中的任务结束。
 func (s *Scheduler) Stop() context.Context {
 	ctx := s.cron.Stop()
-	logger.Info("scheduler stopped")
+	logger.Info("定时调度器已停止")
 	return ctx
 }
 
@@ -69,8 +69,15 @@ func (s *Scheduler) Reload() error {
 		return fmt.Errorf("failed to load workflows for scheduling: %w", err)
 	}
 
+	logger.Debug("开始重新加载定时任务",
+		zap.Int("启用中的工作流数", len(workflows)))
+
 	for _, wf := range workflows {
 		if wf.Cron == "" {
+			logger.Debug("工作流未配置 cron，跳过调度",
+				zap.Uint("工作流ID", wf.ID),
+				zap.String("工作流名称", wf.Name),
+			)
 			continue
 		}
 		wf := wf
@@ -78,22 +85,23 @@ func (s *Scheduler) Reload() error {
 			s.runWorkflow(wf.ID)
 		})
 		if err != nil {
-			logger.Error("invalid cron expression",
-				zap.Uint("workflow_id", wf.ID),
-				zap.String("cron", wf.Cron),
+			logger.Error("cron 表达式非法，该工作流未加入调度",
+				zap.Uint("工作流ID", wf.ID),
+				zap.String("工作流名称", wf.Name),
+				zap.String("cron表达式", wf.Cron),
 				zap.Error(err),
 			)
 			continue
 		}
 		s.entries[wf.ID] = entryID
-		logger.Info("scheduled workflow",
-			zap.Uint("workflow_id", wf.ID),
-			zap.String("name", wf.Name),
-			zap.String("cron", wf.Cron),
+		logger.Info("已注册定时任务",
+			zap.Uint("工作流ID", wf.ID),
+			zap.String("工作流名称", wf.Name),
+			zap.String("cron表达式", wf.Cron),
 		)
 	}
 
-	logger.Info("scheduler reloaded", zap.Int("jobs", len(s.entries)))
+	logger.Info("定时任务重新加载完成", zap.Int("任务数量", len(s.entries)))
 	return nil
 }
 
@@ -101,34 +109,50 @@ func (s *Scheduler) Reload() error {
 func (s *Scheduler) runWorkflow(id uint) {
 	defer func() {
 		if r := recover(); r != nil {
-			logger.Error("panic while running scheduled workflow",
-				zap.Uint("workflow_id", id), zap.Any("recover", r))
+			logger.Error("定时任务调度过程发生 panic",
+				zap.Uint("工作流ID", id), zap.Any("异常信息", r))
 		}
 	}()
 
 	wf, err := s.repo.GetByID(id)
 	if err != nil || wf == nil {
-		logger.Warn("scheduled workflow not found", zap.Uint("workflow_id", id))
+		logger.Warn("定时任务触发的工作流不存在", zap.Uint("工作流ID", id))
 		return
 	}
 	if !wf.Enabled {
+		logger.Debug("工作流已停用，跳过本次定时触发",
+			zap.Uint("工作流ID", id),
+			zap.String("工作流名称", wf.Name),
+		)
 		return
 	}
+
+	logger.Info("定时任务触发工作流",
+		zap.Uint("工作流ID", id),
+		zap.String("工作流名称", wf.Name),
+	)
 
 	// 异步执行，避免长时间任务阻塞调度循环。
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				logger.Error("panic in scheduled run", zap.Uint("workflow_id", id), zap.Any("recover", r))
+				logger.Error("定时运行过程发生 panic",
+					zap.Uint("工作流ID", id), zap.Any("异常信息", r))
 			}
 		}()
-		if _, err := s.engine.Execute(context.Background(), wf, model.TriggerCron, ""); err != nil {
-			logger.Error("scheduled run failed",
-				zap.Uint("workflow_id", id),
-				zap.String("name", wf.Name),
+		run, err := s.engine.Execute(context.Background(), wf, model.TriggerCron, "")
+		if err != nil {
+			logger.Error("定时运行失败",
+				zap.Uint("工作流ID", id),
+				zap.String("工作流名称", wf.Name),
 				zap.Error(err),
 			)
+			return
 		}
+		logger.Debug("定时运行已生成运行记录，前端轮询时可自动发现",
+			zap.Uint("运行ID", run.ID),
+			zap.Uint("工作流ID", id),
+		)
 	}()
 }
 

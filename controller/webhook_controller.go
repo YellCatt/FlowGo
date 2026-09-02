@@ -23,16 +23,30 @@ func NewWebhookController(svc service.WorkflowService) *WebhookController {
 func (c *WebhookController) Trigger(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("key")
 	if key == "" {
+		logger.Warn("Webhook 触发失败：缺少密钥参数")
 		writeBadRequest(w, errMissingKey)
 		return
 	}
 
 	payload := readRunPayload(r)
+	logger.Info("收到 Webhook 触发请求",
+		zap.String("密钥", key),
+		zap.Int("触发负载长度", len(payload)),
+	)
 	run, err := c.service.TriggerByWebhook(r.Context(), key, payload)
 	if err != nil {
+		logger.Warn("Webhook 触发失败",
+			zap.String("密钥", key),
+			zap.Error(err),
+		)
 		writeStatusErr(w, err)
 		return
 	}
+	logger.Info("Webhook 触发已受理",
+		zap.String("密钥", key),
+		zap.Uint("运行ID", run.ID),
+		zap.String("运行状态", run.Status),
+	)
 
 	writeCreated(w, webhookResponse{
 		RunID:  run.ID,

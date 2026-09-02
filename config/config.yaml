@@ -6,7 +6,7 @@ database:
 
 log:
   path: ./logs
-  level: info
+  level: debug
 
 # 运行的超时保护，长耗时场景（如 ai_agent 分析大文件）可适当调大
 run:

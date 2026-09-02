@@ -102,6 +102,7 @@ func (c *WorkflowController) Delete(w http.ResponseWriter, r *http.Request) {
 func (c *WorkflowController) Run(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r)
 	if err != nil {
+		logger.Warn("手动触发运行：路径参数 id 非法", zap.String("raw", r.PathValue("id")))
 		writeBadRequest(w, err)
 		return
 	}
@@ -109,9 +110,18 @@ func (c *WorkflowController) Run(w http.ResponseWriter, r *http.Request) {
 	payload := readRunPayload(r)
 	run, err := c.service.TriggerAsync(id, model.TriggerManual, payload)
 	if err != nil {
+		logger.Warn("手动触发运行失败",
+			zap.Uint("工作流ID", id),
+			zap.Error(err),
+		)
 		writeStatusErr(w, err)
 		return
 	}
+	logger.Info("手动触发运行已受理，已返回待执行记录",
+		zap.Uint("运行ID", run.ID),
+		zap.Uint("工作流ID", id),
+		zap.Int("触发负载长度", len(payload)),
+	)
 	writeCreated(w, run)
 }
 
@@ -128,8 +138,10 @@ func (c *WorkflowController) AgentTools(w http.ResponseWriter, r *http.Request) 
 // reloadScheduler 工作流变更后刷新定时任务，失败仅记录日志不影响主流程。
 func (c *WorkflowController) reloadScheduler() {
 	if c.scheduler == nil {
+		logger.Debug("未配置定时调度器，跳过重新加载")
 		return
 	}
+	logger.Debug("工作流发生变更，准备重新加载定时任务")
 	if err := c.scheduler.Reload(); err != nil {
 		writeLogError(err)
 	}
@@ -142,6 +154,7 @@ func parseID(r *http.Request) (uint, error) {
 	if err != nil {
 		return 0, errors.New("invalid id: " + raw)
 	}
+	logger.Debug("解析请求路径 id 成功", zap.Uint("id", uint(v)))
 	return uint(v), nil
 }
 

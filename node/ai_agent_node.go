@@ -68,8 +68,20 @@ func (e *AIAgentExecutor) Run(ctx context.Context, cfg map[string]any, ec *Conte
 
 	registry := DefaultToolRegistry().Filter(strList(cfg, "tools"))
 	if len(registry.Names()) == 0 {
+		logger.Error("ai_agent 节点未配置可用工具，节点执行失败",
+			zap.String("node", nodeIDOf(ec)),
+		)
 		return nil, fmt.Errorf("ai_agent node has no usable tools, check the tools field")
 	}
+	logger.Debug("ai_agent 节点初始化完成",
+		zap.String("node", nodeIDOf(ec)),
+		zap.String("模型", model),
+		zap.Int("最大迭代", maxIter),
+		zap.Float64("温度", temperature),
+		zap.Int("最大令牌", maxTokens),
+		zap.Strings("可用工具", registry.Names()),
+		zap.Bool("原生工具调用", boolOr(cfg, "native_tools", false)),
+	)
 
 	loop := &agentLoop{
 		client:      newLLMClient(baseURL, apiKey, model, time.Duration(timeoutSec)*time.Second),
@@ -90,9 +102,19 @@ func (e *AIAgentExecutor) Run(ctx context.Context, cfg map[string]any, ec *Conte
 	userPrompt := buildAgentUserPrompt(ec, str(cfg, "user_prompt", ""))
 
 	start := time.Now()
+	logger.Debug("ai_agent 节点开始执行",
+		zap.String("node", nodeIDOf(ec)),
+		zap.String("模型", model),
+	)
 	res, err := loop.run(ctx, systemPrompt, userPrompt)
 	elapsed := time.Since(start).Milliseconds()
 	if err != nil {
+		logger.Error("ai_agent 节点执行出错",
+			zap.String("node", nodeIDOf(ec)),
+			zap.String("模型", model),
+			zap.Int64("耗时_毫秒", elapsed),
+			zap.Error(err),
+		)
 		return nil, err
 	}
 
@@ -107,13 +129,13 @@ func (e *AIAgentExecutor) Run(ctx context.Context, cfg map[string]any, ec *Conte
 		"duration_ms":            elapsed,
 	}
 
-	logger.Info("ai_agent node finished",
+	logger.Info("ai_agent 节点执行完成",
 		zap.String("node", nodeIDOf(ec)),
-		zap.String("model", res.Model),
-		zap.Int("iterations", res.Iterations),
-		zap.Int("tool_calls", len(res.ToolCalls)),
-		zap.Bool("exhausted", res.Exhausted),
-		zap.Int64("duration_ms", elapsed),
+		zap.String("模型", res.Model),
+		zap.Int("迭代次数", res.Iterations),
+		zap.Int("工具调用次数", len(res.ToolCalls)),
+		zap.Bool("达到最大迭代", res.Exhausted),
+		zap.Int64("耗时_毫秒", elapsed),
 	)
 	return out, nil
 }

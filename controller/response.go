@@ -26,7 +26,7 @@ func writeJSON(w http.ResponseWriter, status int, data any) {
 		return
 	}
 	if err := json.NewEncoder(w).Encode(data); err != nil {
-		logger.Error("failed to encode response", zap.Error(err))
+		logger.Error("响应编码失败，客户端可能无法收到完整数据", zap.Error(err))
 	}
 }
 
@@ -71,7 +71,7 @@ func decodeJSON(r *http.Request, dst any) error {
 // 优先使用 JSON 请求体，其次表单与查询参数，纯文本则包装为 {"raw": "..."}。
 func readRunPayload(r *http.Request) string {
 	if err := r.ParseForm(); err != nil {
-		logger.Debug("failed to parse form", zap.Error(err))
+		logger.Debug("请求表单解析失败，已忽略表单参数", zap.Error(err))
 	}
 
 	if form := mergeValues(r.PostForm); len(form) > 0 {
@@ -91,7 +91,7 @@ func readRunPayload(r *http.Request) string {
 	}
 	raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil {
-		logger.Warn("failed to read request body", zap.Error(err))
+		logger.Warn("读取请求体失败，将使用空触发参数", zap.Error(err))
 		return ""
 	}
 	raw = []byte(strings.TrimSpace(string(raw)))
@@ -121,5 +121,5 @@ func mergeValues(v map[string][]string) map[string]string {
 
 // writeLogError 记录内部错误但不改变已发出的响应。
 func writeLogError(err error) {
-	logger.Error("failed to reload scheduler", zap.Error(err))
+	logger.Error("重新加载定时任务失败", zap.Error(err))
 }

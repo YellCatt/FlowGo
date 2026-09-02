@@ -4,6 +4,10 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/example/flowgo/logger"
+
+	"go.uber.org/zap"
 )
 
 // DelayExecutor 等待指定时长的节点执行器。
@@ -21,19 +25,38 @@ func (e *DelayExecutor) Run(ctx context.Context, cfg map[string]any, ec *Context
 		return nil, err
 	}
 	if seconds < 0 {
+		logger.Error("Delay 节点配置了负数秒数",
+			zap.String("node", nodeIDOf(ec)),
+			zap.Int("秒数", seconds),
+		)
 		return nil, fmt.Errorf("delay seconds must be >= 0, got %d", seconds)
 	}
 	if seconds == 0 {
+		logger.Debug("Delay 节点配置为 0 秒，立即放行",
+			zap.String("node", nodeIDOf(ec)),
+		)
 		return map[string]any{"seconds": 0, "slept_ms": 0}, nil
 	}
 
+	logger.Debug("Delay 节点开始等待",
+		zap.String("node", nodeIDOf(ec)),
+		zap.Int("秒数", seconds),
+	)
 	start := time.Now()
 	select {
 	case <-ctx.Done():
+		logger.Warn("Delay 节点在等待期间被取消",
+			zap.String("node", nodeIDOf(ec)),
+			zap.Int("原计划秒数", seconds),
+		)
 		return nil, ctx.Err()
 	case <-time.After(time.Duration(seconds) * time.Second):
 	}
 
+	logger.Debug("Delay 节点等待结束",
+		zap.String("node", nodeIDOf(ec)),
+		zap.Int("实际休眠_毫秒", int(time.Since(start).Milliseconds())),
+	)
 	return map[string]any{
 		"seconds":   seconds,
 		"slept_ms":  time.Since(start).Milliseconds(),

@@ -7,6 +7,10 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/example/flowgo/logger"
+
+	"go.uber.org/zap"
 )
 
 // maxBodyLog 响应体写入日志的最大字节数。
@@ -25,6 +29,8 @@ func (e *HTTPExecutor) Run(ctx context.Context, cfg map[string]any, ec *Context)
 	method := strings.ToUpper(strOr(cfg, "method", "GET"))
 	url := strOr(cfg, "url", "")
 	if url == "" {
+		logger.Error("HTTP 节点缺少 url 配置，执行失败",
+			zap.String("node", nodeIDOf(ec)))
 		return nil, fmt.Errorf("http node requires a non-empty url")
 	}
 
@@ -44,6 +50,12 @@ func (e *HTTPExecutor) Run(ctx context.Context, cfg map[string]any, ec *Context)
 
 	req, err := http.NewRequestWithContext(ctx, method, url, reader)
 	if err != nil {
+		logger.Error("HTTP 节点构造请求失败",
+			zap.String("node", nodeIDOf(ec)),
+			zap.String("方法", method),
+			zap.String("地址", url),
+			zap.Error(err),
+		)
 		return nil, fmt.Errorf("failed to build request: %w", err)
 	}
 
@@ -55,10 +67,23 @@ func (e *HTTPExecutor) Run(ctx context.Context, cfg map[string]any, ec *Context)
 		req.Header.Set("Content-Type", "application/json")
 	}
 
+	logger.Debug("HTTP 节点开始请求",
+		zap.String("node", nodeIDOf(ec)),
+		zap.String("方法", method),
+		zap.String("地址", url),
+		zap.Int("超时_秒", timeoutSec),
+	)
+
 	client := &http.Client{Timeout: time.Duration(timeoutSec) * time.Second}
 	start := time.Now()
 	resp, err := client.Do(req)
 	if err != nil {
+		logger.Error("HTTP 节点请求失败",
+			zap.String("node", nodeIDOf(ec)),
+			zap.String("方法", method),
+			zap.String("地址", url),
+			zap.Error(err),
+		)
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
@@ -83,8 +108,18 @@ func (e *HTTPExecutor) Run(ctx context.Context, cfg map[string]any, ec *Context)
 
 	// 状态码 >= 400 视为节点失败，中断后续流程。
 	if resp.StatusCode >= 400 {
+		logger.Warn("HTTP 节点收到错误状态码，节点标记失败",
+			zap.String("node", nodeIDOf(ec)),
+			zap.Int("状态码", resp.StatusCode),
+			zap.Int64("耗时_毫秒", elapsed),
+		)
 		return out, fmt.Errorf("http node got unexpected status %d: %s", resp.StatusCode, truncate(string(raw), 512))
 	}
+	logger.Debug("HTTP 节点请求成功",
+		zap.String("node", nodeIDOf(ec)),
+		zap.Int("状态码", resp.StatusCode),
+		zap.Int64("耗时_毫秒", elapsed),
+	)
 	return out, nil
 }
 

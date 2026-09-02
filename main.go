@@ -67,6 +67,17 @@ func main() {
 		logger.Fatal("failed to init database", zap.Error(err))
 	}
 
+	logger.Debug("配置加载完成，当前生效值",
+		zap.Int("服务端口", config.GetServerPort()),
+		zap.String("数据库路径", config.GetDatabasePath()),
+		zap.String("日志目录", config.GetLogPath()),
+		zap.String("日志级别", config.GetLogLevel()),
+		zap.Duration("单次运行超时", config.GetMaxRunDuration()),
+		zap.String("大模型接口", config.GetLLMBaseURL()),
+		zap.String("默认模型", config.GetLLMModel()),
+		zap.Int("大模型超时_秒", config.GetLLMTimeout()),
+	)
+
 	workflowRepo := repository.NewWorkflowRepository(db)
 	runRepo := repository.NewRunRepository(db)
 

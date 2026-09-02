@@ -66,9 +66,16 @@ func (l *agentLoop) run(ctx context.Context, systemPrompt, userPrompt string) (*
 	var lastContent string
 	for iter := 1; iter <= l.maxIter; iter++ {
 		if err := ctx.Err(); err != nil {
+			logger.Warn("ai_agent 循环被上下文取消，提前结束", l.logFields...)
 			return nil, err
 		}
 
+		logger.Debug("ai_agent 发起模型调用",
+			append(append([]zap.Field{}, l.logFields...),
+				zap.Int("第几轮", iter),
+				zap.Int("最大轮次", l.maxIter),
+			)...,
+		)
 		resp, err := l.client.chat(ctx, llmRequest{
 			Model:       l.model,
 			Messages:    messages,
@@ -77,6 +84,10 @@ func (l *agentLoop) run(ctx context.Context, systemPrompt, userPrompt string) (*
 			Tools:       l.toolDefs(),
 		})
 		if err != nil {
+			logger.Error("ai_agent 模型调用失败", append(append([]zap.Field{}, l.logFields...),
+				zap.Int("第几轮", iter),
+				zap.Error(err),
+			)...)
 			return nil, err
 		}
 
@@ -125,7 +136,7 @@ func (l *agentLoop) run(ctx context.Context, systemPrompt, userPrompt string) (*
 	// 达到最大轮次仍要求调用工具：以最后一轮文本作为降级结论，不判定节点失败。
 	res.Exhausted = true
 	res.Answer = lastContent
-	logger.Warn("ai_agent reached max iterations", l.logFields...)
+	logger.Warn("ai_agent 达到最大迭代次数，按降级结论返回", l.logFields...)
 	return res, nil
 }
 
@@ -136,20 +147,26 @@ func (l *agentLoop) execTool(ctx context.Context, name string, args map[string]a
 	}
 
 	start := time.Now()
+	logger.Debug("ai_agent 即将调用工具",
+		append(append([]zap.Field{}, l.logFields...),
+			zap.String("工具", name),
+		)...,
+	)
 	result, err := l.tools.Call(ctx, name, args)
+	elapsed := time.Since(start).Milliseconds()
 	result = truncate(result, l.maxToolOut)
 
 	fields := append([]zap.Field{}, l.logFields...)
 	fields = append(fields,
-		zap.String("tool", name),
-		zap.Int64("duration_ms", time.Since(start).Milliseconds()),
+		zap.String("工具", name),
+		zap.Int64("耗时_毫秒", elapsed),
 	)
 	if err != nil {
 		fields = append(fields, zap.Error(err))
-		logger.Warn("ai_agent tool call failed", fields...)
+		logger.Warn("ai_agent 工具调用失败", fields...)
 		return result, err
 	}
-	logger.Info("ai_agent tool call finished", fields...)
+	logger.Info("ai_agent 工具调用完成", fields...)
 	return result, nil
 }
 
