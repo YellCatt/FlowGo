@@ -5,14 +5,16 @@ import (
 
 	"github.com/example/flowgo/logger"
 	"github.com/example/flowgo/model"
-	"github.com/glebarez/sqlite"
 	"go.uber.org/zap"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	gormlog "gorm.io/gorm/logger"
 )
 
 // NewDatabase 打开 SQLite 连接并自动迁移全部模型。
-// 驱动使用纯 Go 实现（modernc.org/sqlite），无需 CGO，可交叉编译为单文件。
+// 驱动使用 github.com/mattn/go-sqlite3（CGO 版 SQLite3），
+// 兼容 MIPS 等 32 位小端平台（如极路由 2 / MT7620），
+// 编译时需要 CGO_ENABLED=1 及对应平台的交叉编译工具链。
 func NewDatabase() (*gorm.DB, error) {
 	logger.Debug("数据库：开始打开 SQLite 连接", zap.String("路径", cfg.Database.Path))
 

@@ -3,26 +3,22 @@ module github.com/example/flowgo
 go 1.22
 
 require (
-	github.com/glebarez/sqlite v1.11.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/shirou/gopsutil/v3 v3.24.1
 	go.uber.org/zap v1.27.0
 	gopkg.in/yaml.v3 v3.0.1
+	gorm.io/driver/sqlite v1.5.7
 	gorm.io/gorm v1.30.0
 )
 
 require (
-	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/glebarez/go-sqlite v1.21.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
-	github.com/google/uuid v1.3.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
-	github.com/mattn/go-isatty v0.0.17 // indirect
+	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
-	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
@@ -31,8 +27,4 @@ require (
 	golang.org/x/sys v0.20.0 // indirect
 	golang.org/x/text v0.20.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
-	modernc.org/libc v1.22.5 // indirect
-	modernc.org/mathutil v1.5.0 // indirect
-	modernc.org/memory v1.5.0 // indirect
-	modernc.org/sqlite v1.23.1 // indirect
 )

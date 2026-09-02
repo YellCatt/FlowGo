@@ -203,7 +203,7 @@ func (l *AgentLoop) toolDefs() []llmToolDef {
 	if !l.NativeTools || l.Tools == nil {
 		return nil
 	}
-	specs := l.tools.Specs()
+	specs := l.Tools.Specs()
 	if len(specs) == 0 {
 		return nil
 	}

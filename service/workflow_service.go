@@ -10,10 +10,10 @@ import (
 	"strings"
 
 	"github.com/example/flowgo/engine"
-	"github.com/example/flowgo/agent"
 	"github.com/example/flowgo/logger"
 	"github.com/example/flowgo/model"
 	"github.com/example/flowgo/node"
+	"github.com/example/flowgo/node/agent"
 	"github.com/example/flowgo/repository"
 
 	"go.uber.org/zap"
