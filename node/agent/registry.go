@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+
+	"github.com/example/flowgo/logger"
+
+	"go.uber.org/zap"
 )
 
 // 内置工具名称，ai_agent 节点内部只能调用这些已注册的工具。
@@ -70,6 +74,7 @@ func (r *ToolRegistry) Register(t *Tool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.tools[t.Name] = t
+	logger.Debug("注册 AI 工具", zap.String("名称", t.Name))
 }
 
 // Get 按名称获取工具，未注册返回 nil。
@@ -143,5 +148,6 @@ func (r *ToolRegistry) Call(ctx context.Context, name string, args map[string]an
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	logger.Debug("执行 AI 工具", zap.String("名称", name), zap.Any("参数", args))
 	return t.Fn(ctx, args)
 }

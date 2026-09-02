@@ -42,6 +42,10 @@ func writeCreated(w http.ResponseWriter, data any) {
 
 // writeError 按错误映射状态码并返回错误描述。
 func writeError(w http.ResponseWriter, status int, err error) {
+	logger.Debug("返回错误响应",
+		zap.Int("状态码", status),
+		zap.String("错误信息", err.Error()),
+	)
 	writeJSON(w, status, envelope{Error: err.Error()})
 }
 
@@ -51,8 +55,9 @@ func writeBadRequest(w http.ResponseWriter, err error) { writeError(w, http.Stat
 // writeNotFound 返回 404 错误。
 func writeNotFound(w http.ResponseWriter, err error) { writeError(w, http.StatusNotFound, err) }
 
-// writeInternal 返回 500 错误。
+// writeInternal 返回 500 错误，并记录到错误日志便于排查。
 func writeInternal(w http.ResponseWriter, err error) {
+	logger.Error("服务器内部错误", zap.Error(err))
 	writeError(w, http.StatusInternalServerError, err)
 }
 

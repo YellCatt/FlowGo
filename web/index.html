@@ -66,6 +66,7 @@
   .wf-item.active { background: var(--accent-soft); border-color: var(--accent); }
   .wf-item .name { font-weight: 500; display: flex; align-items: center; gap: 8px; }
   .wf-item .meta { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .wf-item .meta .grp { color: var(--accent); }
   .content { flex: 1; overflow-y: auto; padding: 20px 24px 60px; }
 
   /* ---------- 控件 ---------- */
@@ -198,6 +199,7 @@
             <div class="meta">
               <span v-if="wf.cron">⏱ {{ wf.cron }}</span>
               <span v-else>未设定时</span>
+              <span v-if="wf.group" class="grp">组:{{ wf.group }}</span>
               · {{ (wf.graph && JSON.parse(wf.graph || '{}').nodes || []).length }} 节点
             </div>
           </div>
@@ -245,6 +247,14 @@
                   <input type="checkbox" v-model="current.enabled" />
                   <span class="hint" style="margin:0;">关闭后 Webhook 与定时任务都不会触发</span>
                 </div>
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="field">
+                <label>分组（同一分组内的工作流串行执行，不同分组并行；留空则各自独立）</label>
+                <input type="text" v-model="current.group" placeholder="例如：mailer / etl，留空表示不分组" />
+                <div class="hint">定时调度时，同分组的工作流同时仅运行一个实例，避免重复执行副作用</div>
               </div>
             </div>
           </div>
@@ -573,7 +583,7 @@ createApp({
       lastRunID = 0;
       current.value = {
         id: 0, name: '新工作流', description: '', enabled: true,
-        cron: '', webhook_key: '', graph: ''
+        cron: '', group: '', webhook_key: '', graph: ''
       };
       nodes.value = [];
       detail.value = null;

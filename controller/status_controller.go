@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/example/flowgo/logger"
 	"github.com/example/flowgo/service"
+
+	"go.uber.org/zap"
 )
 
 // StatusController 系统状态相关的 HTTP 请求处理器。
@@ -19,8 +22,10 @@ func NewStatusController(service service.StatusService) *StatusController {
 
 // GetStatus 处理 GET /status 请求，返回系统运行状态。
 func (c *StatusController) GetStatus(w http.ResponseWriter, r *http.Request) {
+	logger.Debug("查询系统状态")
 	status, err := c.service.GetStatus()
 	if err != nil {
+		logger.Error("查询系统状态失败", zap.Error(err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

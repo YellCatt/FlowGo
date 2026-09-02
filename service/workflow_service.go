@@ -11,9 +11,12 @@ import (
 
 	"github.com/example/flowgo/engine"
 	"github.com/example/flowgo/agent"
+	"github.com/example/flowgo/logger"
 	"github.com/example/flowgo/model"
 	"github.com/example/flowgo/node"
 	"github.com/example/flowgo/repository"
+
+	"go.uber.org/zap"
 )
 
 // ErrWorkflowNotFound 工作流不存在。
@@ -45,11 +48,13 @@ func NewWorkflowService(repo repository.WorkflowRepository, eng *engine.Engine) 
 
 // List 查询全部工作流。
 func (s *workflowService) List() ([]model.Workflow, error) {
+	logger.Debug("查询全部工作流")
 	return s.repo.List()
 }
 
 // Get 按 ID 查询工作流，不存在返回 ErrWorkflowNotFound。
 func (s *workflowService) Get(id uint) (*model.Workflow, error) {
+	logger.Debug("按 ID 查询工作流", zap.Uint("工作流ID", id))
 	wf, err := s.repo.GetByID(id)
 	if err != nil {
 		return nil, err
@@ -62,6 +67,7 @@ func (s *workflowService) Get(id uint) (*model.Workflow, error) {
 
 // Create 校验并新建工作流，自动补全 Webhook 密钥。
 func (s *workflowService) Create(wf *model.Workflow) error {
+	logger.Debug("创建工作流", zap.String("名称", wf.Name))
 	if err := s.validate(wf); err != nil {
 		return err
 	}
@@ -73,6 +79,7 @@ func (s *workflowService) Create(wf *model.Workflow) error {
 
 // Update 校验并保存工作流变更，缺失的 Webhook 密钥自动补全。
 func (s *workflowService) Update(wf *model.Workflow) error {
+	logger.Debug("更新工作流", zap.Uint("工作流ID", wf.ID))
 	existing, err := s.repo.GetByID(wf.ID)
 	if err != nil {
 		return err
@@ -91,6 +98,7 @@ func (s *workflowService) Update(wf *model.Workflow) error {
 
 // Delete 删除工作流。
 func (s *workflowService) Delete(id uint) error {
+	logger.Debug("删除工作流", zap.Uint("工作流ID", id))
 	existing, err := s.repo.GetByID(id)
 	if err != nil {
 		return err
@@ -104,6 +112,7 @@ func (s *workflowService) Delete(id uint) error {
 // TriggerAsync 按 ID 异步触发一次执行：立即返回 pending 运行记录，节点在后台执行，
 // 忽略工作流的启用状态（手动运行始终可用）。
 func (s *workflowService) TriggerAsync(id uint, trigger, payload string) (*model.Run, error) {
+	logger.Debug("异步触发工作流执行", zap.Uint("工作流ID", id), zap.String("触发方式", trigger))
 	wf, err := s.Get(id)
 	if err != nil {
 		return nil, err
@@ -113,6 +122,7 @@ func (s *workflowService) TriggerAsync(id uint, trigger, payload string) (*model
 
 // TriggerByWebhook 按 Webhook 密钥触发执行，仅启用中的工作流可被触发。
 func (s *workflowService) TriggerByWebhook(ctx context.Context, key, payload string) (*model.Run, error) {
+	logger.Debug("Webhook 触发工作流执行", zap.String("密钥", key))
 	wf, err := s.repo.GetByWebhookKey(key)
 	if err != nil {
 		return nil, err

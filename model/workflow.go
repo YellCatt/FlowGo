@@ -13,6 +13,7 @@ type Workflow struct {
 	Enabled     bool   `json:"enabled" gorm:"default:true"`
 	Graph       string `json:"graph" gorm:"type:text"`
 	Cron        string `json:"cron" gorm:"size:64"`
+	Group       string `json:"group" gorm:"size:64;default:''"`
 	WebhookKey  string `json:"webhook_key" gorm:"size:64;uniqueIndex"`
 
 	CreatedAt Time `json:"created_at"`

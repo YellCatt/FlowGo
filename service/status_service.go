@@ -4,12 +4,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/example/flowgo/logger"
 	"github.com/example/flowgo/model"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/shirou/gopsutil/v3/host"
 	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/shirou/gopsutil/v3/net"
+
+	"go.uber.org/zap"
 )
 
 // StatusService 系统状态业务逻辑接口，提供实时系统监控数据。
@@ -28,12 +31,14 @@ func NewStatusService() StatusService {
 	s := &statusService{
 		status: &model.SystemStatus{},
 	}
+	logger.Debug("创建系统状态服务，启动后台采样协程（采样周期 1 秒）")
 	go s.sampler()
 	return s
 }
 
 // sampler 后台定时采集系统指标（CPU、内存、网络、磁盘等），每秒采样一次。
 func (s *statusService) sampler() {
+	logger.Debug("系统状态采样协程已启动")
 	var lastNetRecv, lastNetSent uint64
 	var lastDiskRead, lastDiskWrite uint64
 	var lastSample time.Time
@@ -169,9 +174,16 @@ func (s *statusService) sampler() {
 // GetStatus 获取当前系统状态快照，线程安全。
 func (s *statusService) GetStatus() (*model.SystemStatus, error) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if s.status == nil {
+	status := s.status
+	s.mu.RUnlock()
+	if status == nil {
+		logger.Debug("查询系统状态快照：尚无采样数据")
 		return &model.SystemStatus{}, nil
 	}
-	return s.status, nil
+	logger.Debug("查询系统状态快照",
+		zap.Float64("CPU使用率", status.Cpu.Usage),
+		zap.Float64("内存使用率", status.Memory.Usage),
+		zap.Uint64("运行时长_秒", status.Uptime),
+	)
+	return status, nil
 }

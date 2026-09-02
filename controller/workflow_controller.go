@@ -23,6 +23,7 @@ func NewWorkflowController(svc service.WorkflowService, sched *scheduler.Schedul
 
 // List 处理 GET /api/workflows，返回全部工作流。
 func (c *WorkflowController) List(w http.ResponseWriter, r *http.Request) {
+	logger.Debug("查询工作流列表")
 	list, err := c.service.List()
 	if err != nil {
 		writeInternal(w, err)
@@ -38,6 +39,7 @@ func (c *WorkflowController) Get(w http.ResponseWriter, r *http.Request) {
 		writeBadRequest(w, err)
 		return
 	}
+	logger.Debug("查询工作流详情", zap.Uint("工作流ID", id))
 	wf, err := c.service.Get(id)
 	if err != nil {
 		writeNotFoundErr(w, err)
@@ -53,6 +55,7 @@ func (c *WorkflowController) Create(w http.ResponseWriter, r *http.Request) {
 		writeBadRequest(w, err)
 		return
 	}
+	logger.Debug("创建工作流", zap.String("名称", wf.Name))
 	if err := c.service.Create(&wf); err != nil {
 		writeBadRequest(w, err)
 		return
@@ -74,6 +77,7 @@ func (c *WorkflowController) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	wf.ID = id
+	logger.Debug("更新工作流", zap.Uint("工作流ID", id))
 	if err := c.service.Update(&wf); err != nil {
 		writeStatusErr(w, err)
 		return
@@ -89,6 +93,7 @@ func (c *WorkflowController) Delete(w http.ResponseWriter, r *http.Request) {
 		writeBadRequest(w, err)
 		return
 	}
+	logger.Debug("删除工作流", zap.Uint("工作流ID", id))
 	if err := c.service.Delete(id); err != nil {
 		writeStatusErr(w, err)
 		return
@@ -106,6 +111,7 @@ func (c *WorkflowController) Run(w http.ResponseWriter, r *http.Request) {
 		writeBadRequest(w, err)
 		return
 	}
+	logger.Debug("手动触发工作流运行", zap.Uint("工作流ID", id))
 
 	payload := readRunPayload(r)
 	run, err := c.service.TriggerAsync(id, model.TriggerManual, payload)
@@ -127,11 +133,13 @@ func (c *WorkflowController) Run(w http.ResponseWriter, r *http.Request) {
 
 // NodeTypes 处理 GET /api/node-types，返回内置节点类型。
 func (c *WorkflowController) NodeTypes(w http.ResponseWriter, r *http.Request) {
+	logger.Debug("查询内置节点类型")
 	writeOK(w, c.service.NodeTypes())
 }
 
 // AgentTools 处理 GET /api/agent-tools，返回 ai_agent 节点内部可调用的工具名称。
 func (c *WorkflowController) AgentTools(w http.ResponseWriter, r *http.Request) {
+	logger.Debug("查询 ai_agent 节点可用工具")
 	writeOK(w, c.service.AgentTools())
 }
 

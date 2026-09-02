@@ -9,6 +9,10 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/example/flowgo/logger"
+
+	"go.uber.org/zap"
 )
 
 // 内置节点类型常量。
@@ -53,6 +57,7 @@ func Register(e Executor) {
 	registryMu.Lock()
 	defer registryMu.Unlock()
 	registry[e.Type()] = e
+	logger.Debug("注册节点执行器", zap.String("类型", e.Type()))
 }
 
 // Get 按类型获取已注册的执行器，未注册返回 nil。

@@ -4,6 +4,8 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/example/flowgo/engine"
@@ -24,8 +26,10 @@ type Scheduler struct {
 	mu      sync.Mutex
 	entries map[uint]cron.EntryID
 
-	// running 记录正在执行的工作流 ID，用于保证同一工作流同时只有一个运行实例；
-	// 上一次触发尚未结束时，新的 cron 触发会被跳过，避免重复产生副作用。
+	// running 记录正在执行的分组键，用于保证同一分组同时只有一个运行实例：
+	// 同一 group 下的工作流串行执行，不同 group 之间并行执行；
+	// 未设置 group 的工作流以自身 ID 作为分组键，即各自独立、互不阻塞。
+	// 上一次触发尚未结束时，新的 cron 触发会被跳过，避免重复产生副作用（如重复发邮件、重复写库）。
 	running sync.Map
 }
 
@@ -136,13 +140,15 @@ func (s *Scheduler) runWorkflow(id uint) {
 		return
 	}
 
-	// 同一工作流同时只允许一个运行实例：以 workflowID 为键在 running 中占位，
-	// 已存在说明上一次触发仍在执行，本次直接跳过，避免重复产生副作用（如重复发邮件、重复写库）。
+	// 同分组串行：以分组键在 running 中占位，已存在说明该分组上一次运行仍在执行，本次直接跳过，
+	// 避免重复产生副作用（如重复发邮件、重复写库）。
 	// 注意 LoadOrStore 必须在启动 goroutine 之前同步完成，覆盖「查询后到协程真正执行」之间的时间窗口。
-	if _, loaded := s.running.LoadOrStore(id, struct{}{}); loaded {
-		logger.Warn("上一次定时运行尚未结束，本次触发已跳过（避免重复执行副作用）",
+	key := s.groupKey(wf)
+	if _, loaded := s.running.LoadOrStore(key, struct{}{}); loaded {
+		logger.Warn("同分组的上一次运行尚未结束，本次定时触发已跳过（分组内串行，避免重复执行副作用）",
 			zap.Uint("工作流ID", id),
 			zap.String("工作流名称", wf.Name),
+			zap.String("分组", wf.Group),
 		)
 		return
 	}
@@ -150,12 +156,13 @@ func (s *Scheduler) runWorkflow(id uint) {
 	logger.Info("定时任务触发工作流",
 		zap.Uint("工作流ID", id),
 		zap.String("工作流名称", wf.Name),
+		zap.String("分组", wf.Group),
 	)
 
 	// 异步执行，避免长时间任务阻塞调度循环。
 	go func() {
-		// 运行结束（含 panic）立即清除占位，允许下一次触发正常进入。
-		defer s.running.Delete(id)
+		// 运行结束（含 panic）立即清除占位，允许同分组下一次触发正常进入。
+		defer s.running.Delete(key)
 		defer func() {
 			if r := recover(); r != nil {
 				logger.Error("定时运行过程发生 panic",
@@ -183,4 +190,14 @@ func (s *Scheduler) Entries() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.entries)
+}
+
+// groupKey 计算工作流在调度互斥中使用的分组键。
+// 设置了 group 的工作流使用 "grp:<group>"，使同一分组下的工作流串行执行；
+// 未设置 group 的工作流使用 "wf:<id>"，退化为「各自独立、互不阻塞」，保持此前 per-workflow 行为。
+func (s *Scheduler) groupKey(wf *model.Workflow) string {
+	if g := strings.TrimSpace(wf.Group); g != "" {
+		return "grp:" + g
+	}
+	return "wf:" + strconv.FormatUint(uint64(wf.ID), 10)
 }

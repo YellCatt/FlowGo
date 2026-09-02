@@ -3,10 +3,14 @@ package router
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/example/flowgo/controller"
+	"github.com/example/flowgo/logger"
 	"github.com/example/flowgo/scheduler"
 	"github.com/example/flowgo/web"
+
+	"go.uber.org/zap"
 )
 
 // NewRouter 创建并配置 HTTP 请求路由器，注册健康检查、API、Webhook 与 Web 控制台路由。
@@ -69,7 +73,10 @@ func NewRouter(
 	})
 	mux.Handle("GET /assets/", http.StripPrefix("/assets/", web.AssetsHandler()))
 
-	return mux
+	// 在外层挂载请求日志中间件，统一记录所有路由的访问信息。
+	outer := http.NewServeMux()
+	outer.Handle("/", loggingMiddleware(mux))
+	return outer
 }
 
 // itoa 将整数转为十进制字符串，避免在响应拼接处引入额外依赖。
@@ -93,4 +100,41 @@ func itoa(v int) string {
 		buf[i] = '-'
 	}
 	return string(buf[i:])
+}
+
+// statusRecorder 包装 http.ResponseWriter 以记录响应状态码，便于访问日志输出。
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+// WriteHeader 记录首个写入的状态码。
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+// Write 在隐式返回 200 时补全状态码记录。
+func (r *statusRecorder) Write(b []byte) (int, error) {
+	if r.status == 0 {
+		r.status = http.StatusOK
+	}
+	return r.ResponseWriter.Write(b)
+}
+
+// loggingMiddleware 记录每个 HTTP 请求的方法、路径、来源、状态码与耗时。
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, status: 0}
+		next.ServeHTTP(rec, r)
+		elapsed := time.Since(start)
+		logger.Debug("HTTP 请求处理完成",
+			zap.String("方法", r.Method),
+			zap.String("路径", r.URL.Path),
+			zap.String("来源", r.RemoteAddr),
+			zap.Int("状态码", rec.status),
+			zap.Duration("耗时", elapsed),
+		)
+	})
 }

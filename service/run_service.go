@@ -3,8 +3,11 @@ package service
 import (
 	"errors"
 
+	"github.com/example/flowgo/logger"
 	"github.com/example/flowgo/model"
 	"github.com/example/flowgo/repository"
+
+	"go.uber.org/zap"
 )
 
 // ErrRunNotFound 运行记录不存在。
@@ -29,6 +32,7 @@ func NewRunService(repo repository.RunRepository) RunService {
 
 // List 查询运行记录，workflowID 为 0 表示不限工作流。
 func (s *runService) List(workflowID uint, limit int) ([]model.Run, error) {
+	logger.Debug("查询运行记录", zap.Uint("过滤工作流ID", workflowID), zap.Int("上限", limit))
 	if limit <= 0 || limit > 500 {
 		limit = 50
 	}
@@ -37,6 +41,7 @@ func (s *runService) List(workflowID uint, limit int) ([]model.Run, error) {
 
 // GetDetail 查询运行详情及其全部节点日志。
 func (s *runService) GetDetail(id uint) (*model.RunDetail, error) {
+	logger.Debug("查询运行详情", zap.Uint("运行ID", id))
 	run, err := s.repo.GetByID(id)
 	if err != nil {
 		return nil, err
@@ -53,6 +58,7 @@ func (s *runService) GetDetail(id uint) (*model.RunDetail, error) {
 
 // Delete 删除运行记录及其节点日志。
 func (s *runService) Delete(id uint) error {
+	logger.Debug("删除运行记录", zap.Uint("运行ID", id))
 	run, err := s.repo.GetByID(id)
 	if err != nil {
 		return err

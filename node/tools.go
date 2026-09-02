@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/example/flowgo/logger"
 	"github.com/example/flowgo/node/agent"
+
+	"go.uber.org/zap"
 )
 
 // 本文件把内置节点桥接为 ai_agent 可用的工具，并在包初始化时注册进全局工具表。
@@ -67,6 +70,11 @@ func toolHTTPCall(ctx context.Context, args map[string]any) (string, error) {
 		"headers": args["headers"],
 		"timeout": clampInt(args["timeout"], 30, agent.MaxToolHTTPTimeout, 1),
 	}
+	logger.Debug("AI 工具调用：http-call",
+		zap.String("方法", fmt.Sprint(cfg["method"])),
+		zap.String("URL", fmt.Sprint(cfg["url"])),
+		zap.Int("超时_秒", cfg["timeout"].(int)),
+	)
 	out, err := (&HTTPExecutor{}).Run(ctx, cfg, &Context{})
 	return formatToolResult(out, err)
 }
@@ -77,6 +85,10 @@ func toolShellRun(ctx context.Context, args map[string]any) (string, error) {
 		"command": toolStr(args, "command", ""),
 		"timeout": clampInt(args["timeout"], 30, agent.MaxToolShellTimeout, 1),
 	}
+	logger.Debug("AI 工具调用：shell-run",
+		zap.String("命令", fmt.Sprint(cfg["command"])),
+		zap.Int("超时_秒", cfg["timeout"].(int)),
+	)
 	out, err := (&ShellExecutor{}).Run(ctx, cfg, &Context{})
 	return formatToolResult(out, err)
 }
@@ -92,6 +104,7 @@ func toolDelayWait(ctx context.Context, args map[string]any) (string, error) {
 	if seconds > agent.MaxToolDelaySeconds {
 		seconds = agent.MaxToolDelaySeconds
 	}
+	logger.Debug("AI 工具调用：delay-sleep", zap.Float64("请求等待_秒", seconds))
 	out, err := (&DelayExecutor{}).Run(ctx, map[string]any{
 		"seconds": int(seconds + 0.999), // 向上取整，DelayExecutor 只接受整数秒
 	}, &Context{})
