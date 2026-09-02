@@ -95,7 +95,9 @@ func (e *Engine) ExecuteAsync(wf *model.Workflow, trigger, payload string) (*mod
 	return run, nil
 }
 
-// createRun 落库一条运行记录，status 为 running 时同时写入开始时间。
+// createRun 落库一条运行记录。
+// status 为 running 时同时写入开始时间（started_at），
+// 为 pending 时则不写，由后续 markRunning 在真正开始执行时补写。
 func (e *Engine) createRun(wf *model.Workflow, trigger, payload, status string) (*model.Run, error) {
 	run := &model.Run{
 		WorkflowID: wf.ID,
@@ -104,6 +106,7 @@ func (e *Engine) createRun(wf *model.Workflow, trigger, payload, status string) 
 		Trigger:    trigger,
 		Payload:    payload,
 	}
+	// pending 状态的运行记录尚不知真正开始时间，仅当立即 running 时才写入 started_at。
 	if status == model.RunStatusRunning {
 		now := model.Now()
 		run.StartedAt = &now
@@ -120,7 +123,9 @@ func (e *Engine) createRun(wf *model.Workflow, trigger, payload, status string) 
 	return run, nil
 }
 
-// markRunning 将 pending 的运行记录置为 running，并补写开始时间。
+// markRunning 将 pending 的运行记录真正置为 running，并补写开始时间。
+// 在异步模式下，落库时是 pending（start_at 为空），直到后台 goroutine 实际开跑才调用本函数，
+// 此时才把 started_at 写入，使前端轮询时能看到从 pending 到 running 的状态跃迁。
 func (e *Engine) markRunning(run *model.Run) {
 	if run.StartedAt == nil {
 		now := model.Now()
@@ -389,7 +394,7 @@ func (e *Engine) logNodeFailure(run *model.Run, def *model.NodeDef, cfg map[stri
 	)
 }
 
-// sortedKeys 按字典序返回配置字段名，仅用于调试日志输出，保证顺序稳定可读。
+// sortedKeys 按字典序返回 map 的键名，仅用于调试日志，保证每次输出的字段顺序稳定、便于比对。
 func sortedKeys(m map[string]any) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {

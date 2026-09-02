@@ -43,7 +43,11 @@ func (e *AIAgentExecutor) Type() string { return TypeAIAgent }
 func (e *AIAgentExecutor) MaskedFields() []string { return []string{"api_key", "apiKey"} }
 
 // Run 执行 ai_agent 节点，返回可供下游引用的输出变量。
+// 流程：① 解析并校验节点参数（模型、密钥、迭代上限等，节点配置优先于全局配置）；
+//       ② 构造 agentLoop 循环调用大模型并按需调用工具；
+//       ③ 将模型结论与统计信息组装为输出交给下游节点。
 func (e *AIAgentExecutor) Run(ctx context.Context, cfg map[string]any, ec *Context) (map[string]any, error) {
+	// 逐级兜底获取大模型连接参数：节点配置 → 全局配置 → 内置默认值。
 	baseURL := firstNonEmpty(str(cfg, "base_url", ""), config.GetLLMBaseURL(), defaultAgentBaseURL)
 	apiKey := firstNonEmpty(str(cfg, "api_key", ""), config.GetLLMAPIKey())
 	model := firstNonEmpty(str(cfg, "model", ""), config.GetLLMModel(), defaultAgentModel)
@@ -101,6 +105,7 @@ func (e *AIAgentExecutor) Run(ctx context.Context, cfg map[string]any, ec *Conte
 	systemPrompt := buildAgentSystemPrompt(registry, str(cfg, "system_prompt", ""), maxIter)
 	userPrompt := buildAgentUserPrompt(ec, str(cfg, "user_prompt", ""))
 
+	// 记录开始时间并计算耗时，用于下面执行完成日志里的 duration_ms。
 	start := time.Now()
 	logger.Debug("ai_agent 节点开始执行",
 		zap.String("node", nodeIDOf(ec)),

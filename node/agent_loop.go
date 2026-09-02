@@ -64,6 +64,7 @@ func (l *agentLoop) run(ctx context.Context, systemPrompt, userPrompt string) (*
 	}
 
 	var lastContent string
+	// 每轮：调用大模型 → 解析其回复 → 若要求调用工具则执行并把结果回灌，直到模型给出最终结论或耗尽轮次。
 	for iter := 1; iter <= l.maxIter; iter++ {
 		if err := ctx.Err(); err != nil {
 			logger.Warn("ai_agent 循环被上下文取消，提前结束", l.logFields...)
@@ -98,7 +99,7 @@ func (l *agentLoop) run(ctx context.Context, systemPrompt, userPrompt string) (*
 			lastContent = text
 		}
 
-		// 原生 function calling：按协议回传工具结果。
+		// 分支一：原生 function calling（native_tools=true）时，大模型直接返回结构化工具调用，按协议回传结果。
 		if len(msg.ToolCalls) > 0 {
 			messages = append(messages, llmMessage{Role: "assistant", Content: msg.Content, ToolCalls: msg.ToolCalls})
 			for _, call := range msg.ToolCalls {
@@ -115,7 +116,7 @@ func (l *agentLoop) run(ctx context.Context, systemPrompt, userPrompt string) (*
 			continue
 		}
 
-		// 文本协议：从回复中解析 {"tool_name": "...", "args": {...}}。
+		// 分支二：文本协议（默认）时，从回复文本中解析 JSON 形式工具调用；解析不到则视为最终结论。
 		calls := l.parseToolCalls(msg.Content)
 		if len(calls) == 0 {
 			res.Answer = strings.TrimSpace(msg.Content)

@@ -14,7 +14,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// maxOutputLog stdout/stderr 写入日志的最大字节数。
+// maxOutputLog stdout/stderr 写入节点输出与日志的最大字节数，超出部分截断。
 const maxOutputLog = 8192
 
 // ShellExecutor 执行系统命令的节点执行器。
@@ -112,7 +112,7 @@ func (e *ShellExecutor) Run(ctx context.Context, cfg map[string]any, ec *Context
 }
 
 // buildShellCommand 根据平台与自定义 shell 组装命令参数。
-// Windows 默认使用 PowerShell，其他平台默认使用 /bin/sh。
+// 未指定 customShell 时：Windows 默认用 PowerShell，其他平台默认用 /bin/sh。
 func buildShellCommand(customShell, command string) (string, []string) {
 	if customShell != "" {
 		parts := strings.Fields(customShell)

@@ -38,6 +38,7 @@ func NewScheduler(repo repository.WorkflowRepository, eng *engine.Engine) *Sched
 
 // Start 加载全部定时任务并启动调度循环。
 func (s *Scheduler) Start() error {
+	// 启动前先把数据库中启用的工作流注册为 cron 任务。
 	if err := s.Reload(); err != nil {
 		return err
 	}
@@ -56,14 +57,17 @@ func (s *Scheduler) Stop() context.Context {
 // Reload 重新读取数据库中的工作流，刷新全部定时任务。
 // 工作流新增、修改或删除后调用即可生效，无需重启进程。
 func (s *Scheduler) Reload() error {
+	// 加锁保护 entries，避免与触发回调并发修改。
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// 先清空旧任务，再根据当前数据库状态全量重建，保证与配置一致。
 	for _, id := range s.entries {
 		s.cron.Remove(id)
 	}
 	s.entries = map[uint]cron.EntryID{}
 
+	// 只加载启用中的工作流，停用的工作流不参与调度。
 	workflows, err := s.repo.ListEnabled()
 	if err != nil {
 		return fmt.Errorf("failed to load workflows for scheduling: %w", err)
@@ -105,7 +109,8 @@ func (s *Scheduler) Reload() error {
 	return nil
 }
 
-// runWorkflow 执行一次定时触发，失败只记录日志不影响后续调度。
+// runWorkflow 执行一次定时触发：查工作流、校验启用状态，再异步执行工作流本身。
+// 失败或 panic 仅记录日志，不影响调度循环与后续触发。
 func (s *Scheduler) runWorkflow(id uint) {
 	defer func() {
 		if r := recover(); r != nil {

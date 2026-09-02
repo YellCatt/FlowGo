@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// maxBodyLog 响应体写入日志的最大字节数。
+// maxBodyLog 响应体写入日志与节点输出的最大字节数，超出部分截断，避免日志被大响应撑爆。
 const maxBodyLog = 8192
 
 // HTTPExecutor 发起 HTTP 请求的节点执行器。
@@ -124,4 +124,5 @@ func (e *HTTPExecutor) Run(ctx context.Context, cfg map[string]any, ec *Context)
 }
 
 // strOr 读取字符串配置项的简写。
+// strOr 读取字符串配置，缺省时返回默认值（HTTP 节点专用别名，语义同 str）。
 func strOr(cfg map[string]any, key, def string) string { return str(cfg, key, def) }

@@ -97,6 +97,8 @@ func newLLMClient(baseURL, apiKey, model string, timeout time.Duration) *llmClie
 }
 
 // chat 发起一次会话补全，返回原始响应。
+// 流程：补全 model（缺省用客户端默认）→ 序列化请求体 → 带鉴权头发起 POST →
+// 读取并解析响应 → 处理业务错误、HTTP 错误码与空 choices 三种异常。
 func (c *llmClient) chat(ctx context.Context, req llmRequest) (*llmResponse, error) {
 	if req.Model == "" {
 		req.Model = c.model
