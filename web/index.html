@@ -286,6 +286,39 @@
   }
   .content-tab.active .tab-badge { background: var(--accent-soft); color: var(--accent); }
 
+  /* ---------- 文档页（YAML 编写） ---------- */
+  .doc-toolbar {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .doc-toolbar .spacer { flex: 1; }
+  .doc-editor {
+    width: 100%; min-height: 460px; padding: 14px 16px; border-radius: 8px;
+    background: #fbfcfe; border: 1px solid var(--border-strong); outline: none;
+    font-family: Consolas, Menlo, monospace; font-size: 13px; line-height: 1.65;
+    color: var(--text); resize: vertical; tab-size: 2; white-space: pre; overflow-wrap: normal;
+    overflow-x: auto;
+  }
+  .doc-editor:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37, 99, 235, .12); }
+  .doc-result {
+    margin-top: 12px; padding: 11px 14px; border-radius: 8px; font-size: 12.5px;
+    line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+  }
+  .doc-result.ok { background: var(--success-soft); color: var(--success); border: 1px solid #bfe6cd; }
+  .doc-result.err { background: var(--danger-soft); color: var(--danger); border: 1px solid #f3c6c6;
+    font-family: Consolas, Menlo, monospace; }
+  .doc-spec {
+    margin-top: 14px; padding: 12px 14px; border-radius: 8px;
+    background: var(--code-bg); border: 1px solid var(--border); font-size: 12px; color: var(--muted);
+  }
+  .doc-spec b { color: var(--text); }
+  .doc-spec code {
+    background: #fff; padding: 1px 6px; border-radius: 4px; color: var(--accent);
+    font-family: Consolas, Menlo, monospace;
+  }
+  .doc-spec ul { margin: 6px 0 0; padding-left: 20px; }
+  .doc-spec li { margin-bottom: 4px; }
+
   /* ---------- 运行页：左列表 + 右详情 ---------- */
   .runs-layout { display: flex; gap: 16px; align-items: flex-start; }
   .runs-side {
@@ -844,7 +877,8 @@
     schedulerJobs: 0,
     runFilter: 0,
     tab: 'edit',          // 主区域当前标签页：edit = 编排，runs = 运行记录
-    stepCollapsed: {}     // 运行详情中步骤的折叠状态，键为 运行ID:步骤序号
+    stepCollapsed: {},    // 运行详情中步骤的折叠状态，键为 运行ID:步骤序号
+    docDraft: ''          // 文档页（YAML）编辑中的草稿，切换工作流时清空避免串稿
   };
 
   var nodeSeq = 0;
@@ -1004,7 +1038,15 @@
   }
 
   // ---------- 渲染：主区域 ----------
+  // syncDocDraft 在重绘前保存文档编辑器里的内容。
+  // 否则任何一次 renderContent（切换标签页、刷新侧栏等）都会让用户正在编写的 YAML 丢失。
+  function syncDocDraft() {
+    var el = document.getElementById('docEditor');
+    if (el) state.docDraft = el.value;
+  }
+
   function renderContent() {
+    syncDocDraft();
     var box = $('#content');
     if (!state.current) {
       box.innerHTML =
@@ -1046,10 +1088,11 @@
     var c = state.current;
     var webhookURL = c.webhook_key ? (location.origin + '/hook/' + encodeURIComponent(c.webhook_key)) : '';
 
-    // 顶部「编辑 / 运行」标签页，两个页面互不干扰。
+    // 顶部「编辑 / 文档 / 运行」标签页：表单编写、文档编写、执行结果三者互不干扰。
     box.innerHTML =
       '<div class="content-tabs">' +
         '<button class="content-tab' + (state.tab === 'edit' ? ' active' : '') + '" data-act="switchTab" data-tab="edit">编辑</button>' +
+        '<button class="content-tab' + (state.tab === 'doc' ? ' active' : '') + '" data-act="switchTab" data-tab="doc">文档</button>' +
         '<button class="content-tab' + (state.tab === 'runs' ? ' active' : '') + '" data-act="switchTab" data-tab="runs">' +
           '运行记录<span class="tab-badge">' + state.runs.length + '</span>' +
         '</button>' +
@@ -1059,16 +1102,22 @@
     renderTabBody();
   }
 
-  // renderTabBody 按当前标签页渲染主体内容：edit 为编排区，runs 为运行记录 + 步骤详情。
+  // renderTabBody 按当前标签页渲染主体：edit 编排表单，doc 文档编写，runs 运行记录与步骤详情。
   function renderTabBody() {
     var box = $('#tabBody');
     if (!box) return;
-    box.innerHTML = state.tab === 'runs' ? runsViewHTML() : editViewHTML();
     if (state.tab === 'runs') {
+      box.innerHTML = runsViewHTML();
       renderRuns();
       renderDetail();
       renderTabs();
+    } else if (state.tab === 'doc') {
+      box.innerHTML = docViewHTML();
+      // 首次进入文档页且文档为空时，用当前编辑内容生成一份，避免对着空白框发呆。
+      var editor = $('#docEditor');
+      if (editor && !editor.value) generateDoc(true);
     } else {
+      box.innerHTML = editViewHTML();
       renderNodes();
     }
     syncPolling();
@@ -1151,6 +1200,178 @@
         '</div>' +
       '</div>'
     );
+  }
+
+  // ---------- 视图：文档页（YAML 编写） ----------
+  function docViewHTML() {
+    return (
+      '<div class="card">' +
+        '<div class="card-title">工作流文档（YAML）<div class="spacer"></div>' +
+          '<div class="actions">' +
+            '<button class="btn small" data-act="genDoc">从表单生成</button>' +
+            '<button class="btn small" data-act="validateDoc">校验</button>' +
+            '<button class="btn small" data-act="downloadDoc">下载</button>' +
+            '<button class="btn small" data-act="applyDoc">应用到表单</button>' +
+            '<button class="btn small primary" data-act="importDoc">导入为新工作流</button>' +
+          '</div>' +
+        '</div>' +
+        '<textarea class="doc-editor" id="docEditor" spellcheck="false" ' +
+          'placeholder="在此用 YAML 编写工作流，或点击「从表单生成」把当前编排转成文档">' +
+          esc(state.docDraft) + '</textarea>' +
+        '<div id="docResult"></div>' +
+        '<div class="doc-spec">' +
+          '<b>语法速查</b>' +
+          '<ul>' +
+            '<li><code>name</code> 必填；可选 <code>description</code> / <code>enabled</code> / <code>cron</code> / <code>group</code></li>' +
+            '<li><code>nodes[].id</code> 与 <code>nodes[].type</code> 必填，type 取 <code>http</code> / <code>shell</code> / <code>delay</code> / <code>ai_agent</code></li>' +
+            '<li><code>depends_on: [n1]</code> 声明上游，会自动转成连线；<b>不写则按书写顺序串行执行</b></li>' +
+            '<li><code>config</code> 按节点类型填写，可用模板变量 <code>{{ .nodes.n1.body }}</code>、<code>{{ .trigger.xxx }}</code></li>' +
+          '</ul>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  // docText 读取编辑器当前内容。
+  function docText() {
+    var el = $('#docEditor');
+    return el ? el.value : '';
+  }
+
+  // setDocResult 在文档页显示操作结果，ok 为真表示成功。
+  function setDocResult(msg, ok) {
+    var box = $('#docResult');
+    if (!box) return;
+    box.className = 'doc-result ' + (ok ? 'ok' : 'err');
+    box.textContent = msg;
+  }
+
+  // generateDoc 用当前编辑中的工作流生成文档。
+  // 优先走后端渲染（保证与导入完全对称），未保存的工作流同样支持。
+  function generateDoc(silent) {
+    if (!state.current) return;
+    try { buildGraph(); }
+    catch (e) {
+      if (!silent) setDocResult('生成失败：' + e.message, false);
+      return;
+    }
+    var c = state.current;
+    // 该接口返回纯文本 YAML 而非 JSON 信封，因此不能用 api()（它会尝试 JSON.parse）。
+    return fetch('/api/workflows/export', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: c.name, description: c.description, enabled: c.enabled,
+        cron: c.cron, group: c.group || '', graph: c.graph })
+    }).then(function (res) {
+      return res.text().then(function (text) {
+        if (!res.ok) {
+          var msg = text;
+          try { msg = JSON.parse(text).error || text; } catch (e) { /* 非 JSON 原文返回 */ }
+          throw new Error(msg);
+        }
+        var el = $('#docEditor');
+        if (el) el.value = text;
+        if (!silent) setDocResult('已根据当前表单生成文档', true);
+        return text;
+      });
+    }).catch(function (e) {
+      if (!silent) setDocResult('生成失败：' + e.message, false);
+    });
+  }
+
+  // validateDoc 只做解析与校验，不落库。
+  function validateDoc() {
+    var text = docText();
+    if (!text.trim()) { setDocResult('文档内容为空', false); return; }
+    return fetch('/api/workflows/import?dry_run=1', {
+      method: 'POST', headers: { 'Content-Type': 'text/yaml' }, body: text
+    }).then(function (res) {
+      return res.text().then(function (body) {
+        if (!res.ok) {
+          var msg = body;
+          try { msg = JSON.parse(body).error || body; } catch (e) { /* 非 JSON 原文返回 */ }
+          throw new Error(msg);
+        }
+        var wf = JSON.parse(body);
+        var count = 0;
+        try { count = (JSON.parse(wf.graph || '{}').nodes || []).length; } catch (e) { count = 0; }
+        return '✓ 校验通过：' + count + ' 个节点，名称「' + wf.name + '」';
+      });
+    }).then(function (msg) { setDocResult(msg, true); })
+      .catch(function (e) { setDocResult('✗ ' + e.message, false); });
+  }
+
+  // applyDoc 校验通过后把文档内容回填到编辑页的表单，用户可继续微调再保存。
+  function applyDoc() {
+    var text = docText();
+    if (!text.trim()) { setDocResult('文档内容为空', false); return; }
+    var wf;
+    return fetch('/api/workflows/import?dry_run=1', {
+      method: 'POST', headers: { 'Content-Type': 'text/yaml' }, body: text
+    }).then(function (res) {
+      return res.text().then(function (body) {
+        if (!res.ok) {
+          var msg = body;
+          try { msg = JSON.parse(body).error || body; } catch (e) { /* 非 JSON 原文返回 */ }
+          throw new Error(msg);
+        }
+        wf = JSON.parse(body);
+      });
+    }).then(function () {
+      stopPolling();
+      // 保留原 id 与 webhook_key：应用到表单不应改变工作流的身份。
+      var keep = state.current || {};
+      state.current = Object.assign({}, keep, {
+        name: wf.name, description: wf.description, enabled: wf.enabled,
+        cron: wf.cron, group: wf.group, graph: wf.graph
+      });
+      parseGraph();
+      state.tab = 'edit';
+      renderContent();
+      setDocResult('');
+      showToast('已应用到表单，确认无误后点「保存」');
+    }).catch(function (e) { setDocResult('✗ ' + e.message, false); });
+  }
+
+  // importDoc 把文档直接创建为一个新的工作流。
+  function importDoc() {
+    var text = docText();
+    if (!text.trim()) { setDocResult('文档内容为空', false); return; }
+    return fetch('/api/workflows/import', {
+      method: 'POST', headers: { 'Content-Type': 'text/yaml' }, body: text
+    }).then(function (res) {
+      return res.text().then(function (body) {
+        if (!res.ok) {
+          var msg = body;
+          try { msg = JSON.parse(body).error || body; } catch (e) { /* 非 JSON 原文返回 */ }
+          throw new Error(msg);
+        }
+        return JSON.parse(body);
+      });
+    }).then(function (wf) {
+      // 导入完成后切到编辑页，让用户立即看到新建的工作流。
+      state.tab = 'edit';
+      showToast('已创建工作流「' + wf.name + '」');
+      return loadWorkflows().then(function () { return selectWorkflow(wf); });
+    }).catch(function (e) { setDocResult('✗ ' + e.message, false); });
+  }
+
+  // downloadDoc 把编辑器内容下载为 .yaml 文件。
+  function downloadDoc() {
+    var text = docText();
+    if (!text.trim()) { setDocResult('文档内容为空，没有可下载的内容', false); return; }
+    var name = (state.current && state.current.name) || 'workflow';
+    var safe = name.replace(/[\\/:*?"<>|]/g, '_');
+    var blob = new Blob([text], { type: 'text/yaml;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = safe + '.yaml';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setDocResult('已下载 ' + safe + '.yaml', true);
   }
 
   // ---------- 视图：运行页 ----------
@@ -1477,6 +1698,7 @@
       parseGraph();
       renderSidebar();
       renderContent();
+      state.docDraft = '';   // 切入新工作流，文档草稿清空，避免与上一个工作流串稿
       return loadRuns();
     });
   }
@@ -1493,6 +1715,7 @@
     state.runFilter = 0;
     state.runs = [];
     state.tab = 'edit';
+    state.docDraft = '';
     renderSidebar();
     renderContent();
   }
@@ -1632,6 +1855,7 @@
       state.nodes = [];
       state.runs = [];
       state.detail = null;
+      state.docDraft = '';
       stopPolling();
       return loadWorkflows();
     }).then(function () {
@@ -1651,6 +1875,7 @@
       if (wasCurrent) {
         stopPolling();
         state.current = null; state.nodes = []; state.runs = []; state.detail = null;
+        state.docDraft = '';
       }
       return loadWorkflows().then(function () {
         if (wasCurrent) renderContent();
@@ -1861,6 +2086,12 @@
       case 'switchTab':
         switchTab(el.getAttribute('data-tab'));
         break;
+
+      case 'genDoc': generateDoc(false); break;
+      case 'validateDoc': validateDoc(); break;
+      case 'applyDoc': applyDoc(); break;
+      case 'importDoc': importDoc(); break;
+      case 'downloadDoc': downloadDoc(); break;
 
       case 'toggleStep':
         // 折叠/展开单个步骤，仅改 class 避免整块重绘导致闪烁。

@@ -2,9 +2,11 @@ package controller
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 
+	"github.com/example/flowgo/dsl"
 	"github.com/example/flowgo/logger"
 	"github.com/example/flowgo/model"
 	"github.com/example/flowgo/scheduler"
@@ -12,6 +14,9 @@ import (
 
 	"go.uber.org/zap"
 )
+
+// maxDocBytes 文档导入请求体的大小上限，防止超大文档打爆内存。
+const maxDocBytes = 1 << 20
 
 // WorkflowController 工作流相关的 HTTP 请求处理器。
 type WorkflowController struct {
@@ -132,6 +137,130 @@ func (c *WorkflowController) Run(w http.ResponseWriter, r *http.Request) {
 		zap.Int("触发负载长度", len(payload)),
 	)
 	writeCreated(w, run)
+}
+
+// Import 处理 POST /api/workflows/import，请求体为 YAML 文档（Flow Spec）。
+//
+// 查询参数 dry_run=1 时只做解析与校验，返回解析结果但不落库，
+// 供前端「校验」「应用到表单」使用；否则解析后直接创建工作流。
+func (c *WorkflowController) Import(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxDocBytes))
+	if err != nil {
+		logger.Warn("导入文档：读取请求体失败", zap.Error(err))
+		writeBadRequest(w, errors.New("读取文档内容失败"))
+		return
+	}
+	if len(body) == 0 {
+		writeBadRequest(w, errors.New("文档内容为空"))
+		return
+	}
+
+	wf, err := dsl.Parse(body)
+	if err != nil {
+		logger.Warn("导入文档：解析失败", zap.Error(err))
+		writeBadRequest(w, err)
+		return
+	}
+
+	dryRun := r.URL.Query().Get("dry_run") == "1"
+	logger.Debug("导入文档",
+		zap.String("名称", wf.Name),
+		zap.Bool("仅校验", dryRun),
+		zap.Int("文档字节数", len(body)),
+	)
+
+	// 复用与表单保存完全一致的校验规则，保证两种编写方式产出同样的结果。
+	if err := c.service.Validate(wf); err != nil {
+		logger.Warn("导入文档：校验未通过",
+			zap.String("名称", wf.Name),
+			zap.Error(err),
+		)
+		writeBadRequest(w, err)
+		return
+	}
+
+	if dryRun {
+		writeOK(w, wf)
+		return
+	}
+
+	if err := c.service.Create(wf); err != nil {
+		logger.Warn("导入文档：创建工作流失败",
+			zap.String("名称", wf.Name),
+			zap.Error(err),
+		)
+		writeBadRequest(w, err)
+		return
+	}
+	c.reloadScheduler()
+	logger.Info("导入文档并创建工作流成功",
+		zap.Uint("工作流ID", wf.ID),
+		zap.String("名称", wf.Name),
+	)
+	writeCreated(w, wf)
+}
+
+// RenderDoc 处理 POST /api/workflows/export，把请求体中的工作流渲染为 YAML 文档。
+// 与 Export 的区别是不要求工作流已落库，供前端为「尚未保存的编辑内容」实时生成文档。
+func (c *WorkflowController) RenderDoc(w http.ResponseWriter, r *http.Request) {
+	var wf model.Workflow
+	if err := decodeJSON(r, &wf); err != nil {
+		writeBadRequest(w, err)
+		return
+	}
+	// 未保存的工作流没有 ID，跳过存在性校验，直接按文档规则渲染。
+	if wf.Name == "" && wf.Graph == "" {
+		writeBadRequest(w, errors.New("工作流内容为空，无法生成文档"))
+		return
+	}
+
+	data, err := dsl.Export(&wf)
+	if err != nil {
+		logger.Warn("渲染文档失败", zap.Error(err))
+		writeBadRequest(w, err)
+		return
+	}
+	logger.Debug("渲染工作流文档成功", zap.Int("文档字节数", len(data)))
+	w.Header().Set("Content-Type", "text/yaml; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
+}
+
+// Export 处理 GET /api/workflows/{id}/export，把工作流导出为 YAML 文档。
+// 导出结果与 Import 互为逆操作，可直接再次导入。
+func (c *WorkflowController) Export(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r)
+	if err != nil {
+		writeBadRequest(w, err)
+		return
+	}
+	wf, err := c.service.Get(id)
+	if err != nil {
+		logger.Warn("导出文档：查询工作流失败",
+			zap.Uint("工作流ID", id),
+			zap.Error(err),
+		)
+		writeNotFoundErr(w, err)
+		return
+	}
+
+	data, err := dsl.Export(wf)
+	if err != nil {
+		logger.Error("导出文档：序列化失败",
+			zap.Uint("工作流ID", id),
+			zap.Error(err),
+		)
+		writeInternal(w, err)
+		return
+	}
+
+	logger.Debug("导出工作流文档成功",
+		zap.Uint("工作流ID", id),
+		zap.Int("文档字节数", len(data)),
+	)
+	w.Header().Set("Content-Type", "text/yaml; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
 }
 
 // NodeTypes 处理 GET /api/node-types，返回内置节点类型。

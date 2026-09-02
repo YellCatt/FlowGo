@@ -42,7 +42,11 @@ func NewRouter(
 	// 工作流 CRUD 与手动触发。
 	mux.HandleFunc("GET /api/workflows", workflowController.List)
 	mux.HandleFunc("POST /api/workflows", workflowController.Create)
+	// 文档（YAML）导入与导出：文档与表单是同一份数据的两种视图。
+	mux.HandleFunc("POST /api/workflows/import", workflowController.Import)
+	mux.HandleFunc("POST /api/workflows/export", workflowController.RenderDoc)
 	mux.HandleFunc("GET /api/workflows/{id}", workflowController.Get)
+	mux.HandleFunc("GET /api/workflows/{id}/export", workflowController.Export)
 	mux.HandleFunc("PUT /api/workflows/{id}", workflowController.Update)
 	mux.HandleFunc("DELETE /api/workflows/{id}", workflowController.Delete)
 	mux.HandleFunc("POST /api/workflows/{id}/run", workflowController.Run)

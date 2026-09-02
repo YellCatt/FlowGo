@@ -33,6 +33,7 @@ type WorkflowService interface {
 	TriggerByWebhook(ctx context.Context, key, payload string) (*model.Run, error)
 	NodeTypes() []string
 	AgentTools() []string
+	Validate(wf *model.Workflow) error
 }
 
 // workflowService WorkflowService 的默认实现。
@@ -68,7 +69,7 @@ func (s *workflowService) Get(id uint) (*model.Workflow, error) {
 // Create 校验并新建工作流，自动补全 Webhook 密钥。
 func (s *workflowService) Create(wf *model.Workflow) error {
 	logger.Debug("创建工作流", zap.String("名称", wf.Name))
-	if err := s.validate(wf); err != nil {
+	if err := s.Validate(wf); err != nil {
 		return err
 	}
 	if wf.WebhookKey == "" {
@@ -87,7 +88,7 @@ func (s *workflowService) Update(wf *model.Workflow) error {
 	if existing == nil {
 		return ErrWorkflowNotFound
 	}
-	if err := s.validate(wf); err != nil {
+	if err := s.Validate(wf); err != nil {
 		return err
 	}
 	if wf.WebhookKey == "" {
@@ -142,8 +143,12 @@ func (s *workflowService) NodeTypes() []string { return node.Types() }
 // AgentTools 返回 ai_agent 节点内部可调用的工具名称列表。
 func (s *workflowService) AgentTools() []string { return agent.ToolNames() }
 
-// validate 校验工作流名称与图结构的合法性。
-func (s *workflowService) validate(wf *model.Workflow) error {
+// Validate 校验工作流名称与图结构的合法性，并把规范化结果写回 wf。
+//
+// 规范化包含：去除名称首尾空格、为未命名的节点补上默认名（节点类型）。
+// 校验通过后会重新序列化图结构，使调用方拿到的 wf 可直接落库。
+// 该方法对外暴露，供文档导入（DSL）等场景在落库前复用同一套校验规则。
+func (s *workflowService) Validate(wf *model.Workflow) error {
 	wf.Name = strings.TrimSpace(wf.Name)
 	if wf.Name == "" {
 		return errors.New("workflow name is required")
@@ -157,7 +162,9 @@ func (s *workflowService) validate(wf *model.Workflow) error {
 		return err
 	}
 	seen := map[string]bool{}
-	for _, n := range graph.Nodes {
+	// 必须按下标取址修改：range 得到的是副本，直接改 n.Name 不会写回 graph。
+	for i := range graph.Nodes {
+		n := &graph.Nodes[i]
 		if strings.TrimSpace(n.ID) == "" {
 			return errors.New("every node requires an id")
 		}
@@ -172,7 +179,7 @@ func (s *workflowService) validate(wf *model.Workflow) error {
 		if node.Get(n.Type) == nil {
 			return fmt.Errorf("unsupported node type %q on node %q", n.Type, n.ID)
 		}
-		if n.Name == "" {
+		if strings.TrimSpace(n.Name) == "" {
 			n.Name = n.Type
 		}
 
@@ -192,7 +199,8 @@ func (s *workflowService) validate(wf *model.Workflow) error {
 	if _, err := engine.SortNodes(graph); err != nil {
 		return err
 	}
-	return nil
+	// 把规范化后的节点（含补全的默认名）写回，保证后续落库与导出都拿到一致结果。
+	return wf.SetGraph(graph)
 }
 
 // generateKey 生成随机的 Webhook 密钥。
