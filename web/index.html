@@ -382,7 +382,17 @@
   .demo-cat-name {
     font-size: 11px; font-weight: 600; color: var(--accent);
     letter-spacing: .5px; margin: 0 4px 6px;
+    cursor: pointer; user-select: none;
+    display: flex; align-items: center;
+    padding: 3px 6px; border-radius: 5px; transition: .12s;
   }
+  .demo-cat-name:hover { background: var(--accent-soft-2); }
+  .demo-cat-name .cat-arrow {
+    margin-left: auto; font-size: 9px; color: var(--muted);
+    transition: transform .15s;
+  }
+  .demo-cat.collapsed > :not(.demo-cat-name) { display: none; }
+  .demo-cat.collapsed .cat-arrow { transform: rotate(-90deg); }
   .sidebar-demo-item {
     padding: 9px 11px; border-radius: var(--radius-sm);
     cursor: pointer; border: 1px solid transparent; transition: .12s;
@@ -878,8 +888,13 @@
     runFilter: 0,
     tab: 'edit',          // 主区域当前标签页：edit = 编排，runs = 运行记录
     stepCollapsed: {},    // 运行详情中步骤的折叠状态，键为 运行ID:步骤序号
-    docDraft: ''          // 文档页（YAML）编辑中的草稿，切换工作流时清空避免串稿
+    docDraft: '',         // 文档页（YAML）编辑中的草稿，切换工作流时清空避免串稿
+    catCollapsed: {}      // 侧栏示例分类的折叠状态，键为分类 id，从 localStorage 同步
   };
+  try {
+    var saved = JSON.parse(localStorage.getItem('flowgo.catCollapsed') || '{}');
+    if (saved && typeof saved === 'object') state.catCollapsed = saved;
+  } catch (e) { /* localStorage 不可用时退化为默认展开 */ }
 
   var nodeSeq = 0;
   var pollTimer = null;   // 运行中详情/列表的轮询定时器
@@ -963,8 +978,13 @@
     box.innerHTML = DEMO_CATEGORIES.map(function (cat) {
       var items = DEMOS.filter(function (d) { return d.category === cat.id; });
       if (!items.length) return '';
-      return '<div class="demo-cat">' +
-        '<div class="demo-cat-name">' + esc(cat.name) + '</div>' +
+      // 从 localStorage 读取上次折叠状态，刷新后保持用户偏好。
+      var collapsed = state.catCollapsed[cat.id] ? ' collapsed' : '';
+      return '<div class="demo-cat' + collapsed + '" data-cat="' + esc(cat.id) + '">' +
+        '<div class="demo-cat-name" data-act="toggleDemoCat" data-cat="' + esc(cat.id) + '" title="点击折叠/展开该分类">' +
+          esc(cat.name) +
+          '<span class="cat-arrow">▼</span>' +
+        '</div>' +
         items.map(function (d) {
           var i = demoIndexOf(d);
           return '<div class="sidebar-demo-item" data-act="loadDemo" data-idx="' + i + '" title="' + esc(d.tip) + '">' +
@@ -2081,6 +2101,19 @@
 
       case 'loadDemo':
         loadDemo(idx);
+        break;
+
+      case 'toggleDemoCat':
+        // 折叠/展开侧栏的示例分类（如「入门示例」「AI 工作流」）。
+        // 切换 class 后同步写 localStorage，刷新后保留用户偏好。
+        var catID = el.getAttribute('data-cat');
+        var catWrap = el.closest('.demo-cat');
+        if (catID && catWrap) {
+          var isCollapsed = catWrap.classList.toggle('collapsed');
+          state.catCollapsed[catID] = isCollapsed;
+          try { localStorage.setItem('flowgo.catCollapsed', JSON.stringify(state.catCollapsed)); }
+          catch (e) { /* 写入失败不影响当前会话 */ }
+        }
         break;
 
       case 'switchTab':
